@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Warung Senja — Pesan dari meja</title>
+  <meta name="description" content="Pesan makanan, minuman, dan snack langsung dari ponselmu. Bayar dengan QRIS atau Midtrans.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,700..900&family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <div id="closed" class="closed-banner" hidden>Restoran sedang tutup. Pemesanan dibuka kembali saat jam buka.</div>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/"><span class="flower" aria-hidden="true"></span><span id="brand-name">Warung Senja</span></a>
+      <nav class="nav" aria-label="Navigasi utama">
+        <a href="#menu">Menu</a>
+        <a href="#cara">Cara pesan</a>
+        <a href="#lokasi">Lokasi</a>
+      </nav>
+      <button class="cart-btn" id="open-cart" type="button" aria-haspopup="dialog">
+        Keranjang <span class="count" id="cart-count">0</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <div>
+          <h1>Duduk dulu. Pesanan kami antar ke meja.</h1>
+          <p class="lede" id="tagline">Pilih makanan, minuman, dan snack dari ponselmu, bayar dengan QRIS, lalu tunggu di tempat.</p>
+          <div class="hero-actions">
+            <a class="btn" href="#menu">Lihat menu</a>
+            <button class="btn alt" id="hero-check" type="button">Cek lokasi saya</button>
+          </div>
+        </div>
+
+        <div class="radar" aria-label="Status jarak ke restoran">
+          <svg viewBox="0 0 400 400" role="img" aria-labelledby="radar-title">
+            <title id="radar-title">Peta jarak: restoran di tengah, lingkaran putus-putus adalah batas pemesanan</title>
+            <circle class="ring" cx="200" cy="200" r="190"/>
+            <circle class="ring" cx="200" cy="200" r="100"/>
+            <circle class="limit" cx="200" cy="200" r="150"/>
+            <circle class="pulse" cx="200" cy="200" r="150"/>
+            <text class="lbl" id="radar-limit-lbl" x="200" y="38" text-anchor="middle">radius 300 m</text>
+            <g aria-hidden="true">
+              <circle cx="200" cy="200" r="34" fill="#f6efe2"/>
+              <g fill="#8c1c3a">
+                <circle cx="200" cy="187" r="10.5"/><circle cx="212.5" cy="196" r="10.5"/><circle cx="207.7" cy="210.7" r="10.5"/><circle cx="192.3" cy="210.7" r="10.5"/><circle cx="187.5" cy="196" r="10.5"/><circle cx="200" cy="200" r="10.5"/>
+              </g>
+              <circle cx="200" cy="200" r="5" fill="#f6efe2"/>
+            </g>
+            <g id="you" hidden>
+              <circle class="you" id="you-halo" cx="200" cy="200" r="18" fill="rgba(183,207,160,.35)"/>
+              <circle class="you" id="you-dot" cx="200" cy="200" r="9" fill="#b7cfa0" stroke="#f6efe2" stroke-width="3.5"/>
+            </g>
+          </svg>
+          <div class="radar-status" id="radar-status" data-state="idle" role="status" aria-live="polite">
+            <span class="dot" aria-hidden="true"></span>
+            <p id="radar-msg">Lokasi belum dicek<small>Pemesanan hanya untuk pengunjung di sekitar restoran.</small></p>
+          </div>
+          <button class="btn block" id="radar-check" type="button">Cek lokasi saya</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="menu-bg" id="menu">
+      <div class="tabs-bar">
+        <div class="wrap"><nav class="tabs" id="tabs" aria-label="Kategori menu"></nav></div>
+      </div>
+      <div class="wrap">
+        <div id="menu-root" aria-live="polite"><p class="muted" style="padding:48px 0">Memuat menu…</p></div>
+      </div>
+      <div style="height:48px"></div>
+    </section>
+
+    <section class="section on-cran" id="cara">
+      <div class="wrap">
+        <h2>Cara pesan</h2>
+        <p class="sub">Tiga langkah, tanpa antre di kasir.</p>
+        <div class="steps">
+          <div class="step"><div class="step-no">1</div><h3>Cek lokasi</h3><p>Izinkan akses lokasi. Kami memastikan kamu berada di dalam radius restoran.</p></div>
+          <div class="step"><div class="step-no">2</div><h3>Pilih menu</h3><p>Tambahkan makanan, minuman, dan snack ke keranjang. Tulis catatan jika perlu.</p></div>
+          <div class="step"><div class="step-no">3</div><h3>Bayar</h3><p>Bayar dengan QRIS atau metode lain lewat Midtrans. Dapur menerima pesanan setelah pembayaran berhasil.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="lokasi">
+      <div class="wrap info">
+        <div>
+          <h2>Datang ke warung</h2>
+          <p class="sub">Pesan dari tempat dudukmu, kami antar sampai meja.</p>
+          <a class="btn" id="map-link" href="#" target="_blank" rel="noopener">Buka di peta</a>
+        </div>
+        <dl>
+          <dt>Alamat</dt><dd id="info-address">—</dd>
+          <dt>Jam buka</dt><dd id="info-hours">—</dd>
+          <dt>Jangkauan</dt><dd id="info-radius">—</dd>
+          <dt>Pembayaran</dt><dd>QRIS, e-wallet, transfer bank, dan kartu melalui Midtrans.</dd>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span class="foot-brand"><span class="flower" aria-hidden="true"></span><span id="foot-name">Warung Senja</span></span>
+      <a href="/admin/">Masuk admin</a>
+    </div>
+  </footer>
+
+  <!-- Keranjang -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true">
+    <div class="drawer-head">
+      <h2 id="drawer-title">Keranjang</h2>
+      <button class="icon-btn" id="close-cart" type="button" aria-label="Tutup keranjang">×</button>
+    </div>
+    <form id="checkout" class="drawer-body" novalidate>
+      <div id="cart-items"></div>
+      <div id="cart-form" hidden>
+        <div class="totals" id="totals"></div>
+
+        <label class="field"><span>Nama pemesan</span>
+          <input id="f-name" name="name" type="text" maxlength="60" autocomplete="name" required placeholder="Contoh: Budi">
+        </label>
+        <div class="field-row">
+          <label class="field"><span>No. HP (opsional)</span>
+            <input id="f-phone" name="phone" type="tel" maxlength="20" autocomplete="tel" inputmode="tel" placeholder="08xxxxxxxxxx">
+          </label>
+          <label class="field"><span>No. meja</span>
+            <input id="f-table" name="table" type="text" maxlength="10" placeholder="12">
+          </label>
+        </div>
+
+        <fieldset class="pay-choice">
+          <legend>Metode pembayaran</legend>
+          <label><input type="radio" name="method" value="qris" checked><b>QRIS</b><small>Scan dengan e-wallet atau m-banking</small></label>
+          <label><input type="radio" name="method" value="snap"><b>Metode lain</b><small>Transfer bank, kartu, e-wallet</small></label>
+        </fieldset>
+
+        <div id="geo-notice" class="notice info" role="status">Lokasimu akan dicek saat kamu menekan tombol bayar.</div>
+      </div>
+    </form>
+    <div class="drawer-foot" id="cart-foot" hidden>
+      <button class="btn block" id="pay-btn" type="submit" form="checkout">Bayar sekarang</button>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

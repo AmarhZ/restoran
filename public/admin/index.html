@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Warung Senja</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,700..900&family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+  <!-- Login -->
+  <main id="login-view" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <h1><span class="flower" aria-hidden="true"></span> Admin</h1>
+      <p class="muted">Masuk untuk mengelola pesanan, menu, dan lokasi.</p>
+      <label class="field"><span>Username</span><input id="l-user" autocomplete="username" required></label>
+      <label class="field"><span>Password</span><input id="l-pass" type="password" autocomplete="current-password" required></label>
+      <div id="login-err" class="notice bad" hidden role="alert"></div>
+      <button class="btn primary block" type="submit" style="margin-top:16px">Masuk</button>
+      <p class="muted" style="margin:16px 0 0;font-size:.85rem"><a href="/">← Kembali ke website</a></p>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app-view" class="app" hidden>
+    <aside class="side">
+      <div class="side-brand"><span class="flower" aria-hidden="true"></span><span id="s-name">Warung Senja</span></div>
+      <nav class="side-nav" aria-label="Menu admin">
+        <button data-tab="orders" aria-current="page">Pesanan <span class="badge" id="orders-badge" hidden>0</span></button>
+        <button data-tab="menu">Menu</button>
+        <button data-tab="settings">Pengaturan</button>
+      </nav>
+      <div class="side-foot">
+        <a href="/" target="_blank" rel="noopener">Lihat website</a>
+        <button id="logout" type="button">Keluar</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <!-- Pesanan -->
+      <section id="tab-orders" class="tab">
+        <header class="page-head">
+          <div><h1>Pesanan</h1><p class="muted">Diperbarui otomatis setiap beberapa detik.</p></div>
+          <label class="sound"><input type="checkbox" id="sound" checked> Bunyi pesanan baru</label>
+        </header>
+        <div class="stats" id="stats"></div>
+        <div class="chips" id="filters" role="tablist" aria-label="Filter pesanan"></div>
+        <div id="orders-list" class="orders"></div>
+      </section>
+
+      <!-- Menu -->
+      <section id="tab-menu" class="tab" hidden>
+        <header class="page-head">
+          <div><h1>Menu</h1><p class="muted">Kelola makanan, minuman, dan snack.</p></div>
+          <button class="btn primary" id="add-menu" type="button">Tambah menu</button>
+        </header>
+        <div class="table-wrap">
+          <table class="tbl">
+            <thead><tr><th></th><th>Nama</th><th>Kategori</th><th class="r">Harga</th><th>Tersedia</th><th></th></tr></thead>
+            <tbody id="menu-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Pengaturan -->
+      <section id="tab-settings" class="tab" hidden>
+        <header class="page-head"><div><h1>Pengaturan</h1><p class="muted">Lokasi restoran, radius pemesanan, dan informasi umum.</p></div></header>
+        <form id="settings-form" class="settings">
+          <div class="panel">
+            <h2>Lokasi &amp; radius pemesanan</h2>
+            <p class="muted">Pelanggan hanya bisa memesan jika GPS mereka berada di dalam lingkaran. Klik peta atau geser pin untuk memindahkan titik pusat.</p>
+            <div id="map" role="application" aria-label="Peta lokasi restoran"></div>
+            <div class="grid2">
+              <label class="field"><span>Latitude</span><input id="s-lat" type="number" step="any" required></label>
+              <label class="field"><span>Longitude</span><input id="s-lng" type="number" step="any" required></label>
+              <label class="field"><span>Radius pemesanan (meter)</span><input id="s-radius" type="number" min="20" max="50000" step="10" required></label>
+              <label class="field"><span>Batas akurasi GPS (meter)</span><input id="s-acc" type="number" min="10" max="2000" step="10" required></label>
+            </div>
+            <div class="row-btns">
+              <button class="btn" id="use-me" type="button">Pakai lokasi saya sekarang</button>
+            </div>
+            <label class="check"><input type="checkbox" id="s-geo"> Aktifkan pembatasan radius</label>
+            <p class="hint">Batas akurasi menolak sinyal GPS yang terlalu kasar, misalnya ±800 m di dalam gedung. Nilai 100–150 m cocok untuk kebanyakan restoran.</p>
+          </div>
+
+          <div class="panel">
+            <h2>Informasi restoran</h2>
+            <label class="field"><span>Nama restoran</span><input id="s-name-in" maxlength="60" required></label>
+            <label class="field"><span>Slogan</span><input id="s-tagline" maxlength="120"></label>
+            <label class="field"><span>Alamat</span><input id="s-address" maxlength="200"></label>
+            <label class="field"><span>Jam buka (teks)</span><input id="s-hours" maxlength="80"></label>
+            <div class="grid2">
+              <label class="field"><span>Pajak restoran (%)</span><input id="s-tax" type="number" min="0" max="30" step="0.5"></label>
+            </div>
+            <label class="check"><input type="checkbox" id="s-open"> Restoran buka (menerima pesanan)</label>
+          </div>
+
+          <div class="panel">
+            <h2>Pembayaran</h2>
+            <p id="pay-mode" class="notice info" style="margin-top:0"></p>
+            <p class="hint">Kunci Midtrans diatur lewat file <code>.env</code> di server, bukan di sini, agar tidak bocor lewat browser.</p>
+          </div>
+
+          <div class="savebar">
+            <div id="settings-msg" class="notice" hidden role="status"></div>
+            <button class="btn primary" type="submit">Simpan pengaturan</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- Dialog menu -->
+  <dialog id="menu-dialog">
+    <form id="menu-form" method="dialog">
+      <h2 id="menu-dialog-title">Tambah menu</h2>
+      <label class="field"><span>Nama menu</span><input id="m-name" maxlength="60" required></label>
+      <label class="field"><span>Deskripsi singkat</span><input id="m-desc" maxlength="160"></label>
+      <div class="grid2">
+        <label class="field"><span>Kategori</span>
+          <select id="m-cat"><option value="makanan">Makanan</option><option value="minuman">Minuman</option><option value="snack">Snack</option></select>
+        </label>
+        <label class="field"><span>Harga (Rp)</span><input id="m-price" type="number" min="0" max="10000000" step="500" required></label>
+        <label class="field"><span>Emoji</span><input id="m-emoji" maxlength="8" placeholder="🍛"></label>
+        <label class="field"><span>URL foto (opsional)</span><input id="m-img" type="url" placeholder="https://…"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="m-avail" checked> Tersedia</label>
+      <div id="menu-err" class="notice bad" hidden role="alert"></div>
+      <div class="dlg-foot">
+        <button class="btn" type="button" id="menu-cancel">Batal</button>
+        <button class="btn primary" type="submit">Simpan menu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
