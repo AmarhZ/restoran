@@ -1,48 +1,44 @@
 # Warung Senja — Website Pemesanan Restoran
 
-Landing page, pilih menu (makanan / minuman / snack), pembayaran **Midtrans (Snap)** dan **QRIS**,
+Landing page, pilih menu (makanan / minuman / snack), pembayaran **QRIS statis** dengan konfirmasi kasir,
 pembatasan pemesanan **berdasarkan radius lokasi**, dan **panel admin**.
 
 ## Menjalankan
 
 ```bash
 npm install
-cp .env.example .env     # lalu isi nilainya
+cp .env.example .env     # lalu isi ADMIN_PASSWORD
 npm start
 ```
 
 - Website: http://localhost:3000
 - Admin:   http://localhost:3000/admin/  (default `admin` / `admin123` — **ganti di `.env`**)
 
-Tanpa kunci Midtrans, aplikasi berjalan di **mode demo**: alur pembayaran bisa dicoba
-dengan tombol "Simulasikan pembayaran berhasil".
+## Langkah pertama (wajib)
 
-## Langkah pertama setelah jalan
+1. Masuk **Admin > Pengaturan > Pembayaran QRIS**, unggah gambar QRIS restoran
+   (PNG/JPG/WebP, maks. 2 MB) dan isi nama merchant. **Tanpa gambar ini pelanggan tidak bisa memesan.**
+2. Di **Pengaturan > Lokasi & radius**, geser pin di peta ke lokasi restoran dan atur radius (mis. 200–300 m).
+3. Ubah nama, alamat, jam buka, dan pajak. Lalu sesuaikan menu di **Admin > Menu**.
 
-1. Masuk ke **Admin > Pengaturan**, geser pin di peta ke lokasi restoran, atur radius (mis. 200–300 m).
-2. Ubah nama, alamat, jam buka, dan pajak.
-3. Di **Admin > Menu**, sesuaikan menu dan harga.
+## Alur pembayaran (QRIS statis)
 
-## Mengaktifkan Midtrans / QRIS
+1. Pelanggan memilih menu, sistem mengecek lokasinya, lalu pesanan dibuat dengan status **Menunggu bayar**.
+2. Halaman bayar menampilkan gambar QRIS restoran dan nominal. Pelanggan memindai QRIS,
+   mengetik nominal yang tepat (ada tombol **Salin nominal**), lalu menekan **Saya sudah bayar**.
+3. Di admin, pesanan muncul di tab **Perlu konfirmasi** dengan bunyi notifikasi.
+   Kasir mengecek mutasi / notifikasi dari bank atau e-wallet, lalu menekan **Konfirmasi pembayaran**.
+4. Pesanan berubah menjadi **Sudah dibayar**, halaman pelanggan ikut berubah, dan dapur memprosesnya:
+   Disiapkan, Siap diantar, Selesai.
 
-1. Daftar di https://dashboard.midtrans.com, ambil **Server Key** dan **Client Key** (mulai dari Sandbox).
-2. Isi di `.env`:
-   ```
-   MIDTRANS_SERVER_KEY=SB-Mid-server-xxxx
-   MIDTRANS_CLIENT_KEY=SB-Mid-client-xxxx
-   MIDTRANS_IS_PRODUCTION=false
-   ```
-3. Di dashboard Midtrans: **Settings > Payment > Notification URL**, isi
-   `https://DOMAIN-ANDA/api/midtrans/notification`.
-4. Aktifkan QRIS di **Settings > Payment** (untuk Production perlu proses persetujuan Midtrans).
-5. Jika sudah lolos uji di Sandbox, ganti kunci ke Production dan `MIDTRANS_IS_PRODUCTION=true`.
-
-Dua metode pembayaran:
-- **QRIS** — Core API `/v2/charge` (acquirer gopay), QR ditampilkan di halaman bayar.
-- **Metode lain** — Snap (transfer bank, e-wallet, kartu, dll.).
-
-Status pesanan diperbarui lewat webhook (signature SHA-512 diverifikasi) dan juga dicek ke
-Midtrans saat halaman bayar membuka status, jadi tetap jalan saat dites di `localhost`.
+Catatan:
+- **Sistem tidak bisa memeriksa uang masuk sendiri.** Konfirmasi dilakukan manusia, jadi selalu cocokkan
+  nominal dan waktunya dengan mutasi sebelum menekan konfirmasi.
+- Pelanggan harus mengetik nominal sendiri pada QRIS statis. Jika salah nominal, kasir bisa membatalkan
+  pesanan dan mengembalikan uang secara manual.
+- Pesanan yang belum ditandai "Saya sudah bayar" kedaluwarsa otomatis setelah 30 menit. Pesanan yang
+  sudah ditandai menunggu kasir dan tidak kedaluwarsa. Pesanan kedaluwarsa masih bisa dikonfirmasi
+  jika uangnya ternyata masuk.
 
 ## Cara kerja pembatasan radius
 
@@ -60,17 +56,19 @@ Catatan penting:
 ## Struktur
 
 ```
-server.js            API, Midtrans, geofence, auth admin
+server.js            API, geofence, QRIS statis, auth admin
 lib/db.js            penyimpanan JSON (data/db.json), mudah diganti ke database SQL
+data/                db.json dan gambar QRIS (dibuat otomatis, jangan dibagikan)
 public/index.html    landing page + menu + panel pesanan (layout dashboard)
 public/css/          site.css (dasar & halaman bayar), shell.css (layout dashboard)
-public/bayar.html    halaman pembayaran + status pesanan
-public/admin/        panel admin (pesanan, menu, pengaturan lokasi)
+public/bayar.html    halaman pembayaran QRIS + status pesanan
+public/admin/        panel admin (pesanan, menu, QRIS, lokasi)
 ```
 
 ## Sebelum online (produksi)
 
 - Ganti `ADMIN_PASSWORD` dan isi `SESSION_SECRET` di `.env`.
 - Jalankan di belakang HTTPS (Nginx/Caddy) dan gunakan proses manager (PM2/systemd).
-- Cadangkan `data/db.json`. Untuk trafik tinggi, pindahkan ke PostgreSQL/MySQL.
-- Gunakan kunci Midtrans Production dan pastikan Notification URL benar.
+- Cadangkan folder `data/`. Untuk trafik tinggi, pindahkan ke PostgreSQL/MySQL.
+- Ingin pembayaran otomatis tanpa konfirmasi kasir? Perlu payment gateway (mis. Midtrans, Xendit)
+  yang menghasilkan QRIS dinamis. Kode versi Midtrans ada di berkas zip versi sebelumnya.

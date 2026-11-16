@@ -180,3 +180,12 @@ dialog h2 { font-size: 2.4rem; }
 #map { border-width: 1px; border-radius: 14px; }
 dialog { border-radius: 20px; }
 .side-brand { font-size: 1.6rem; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.order.claimed { border-color: var(--ocean); }
+.qris-row { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-top: 14px; }
+.qris-prev { width: 170px; min-height: 170px; border: 1px dashed var(--beige); border-radius: 14px; display: grid; place-items: center; overflow: hidden; background: #fff; color: var(--ink-2); font-size: .85rem; text-align: center; padding: 6px; }
+.qris-prev img { width: 100%; height: auto; display: block; }
+.file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+.file-btn:has(input:focus-visible) { outline: 3px solid var(--ocean); outline-offset: 2px; }
+.chip.alert:not([aria-selected="true"]) { background: var(--tint); box-shadow: 0 0 0 3px rgba(44,54,90,.18); }

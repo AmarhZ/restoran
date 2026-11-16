@@ -17,31 +17,16 @@ const express = require('express');
 const db = require('./lib/db');
 
 const PORT = Number(process.env.PORT) || 3000;
-const SERVER_KEY = process.env.MIDTRANS_SERVER_KEY || '';
-const CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY || '';
-const IS_PROD = process.env.MIDTRANS_IS_PRODUCTION === 'true';
-const MOCK = !SERVER_KEY; // tanpa kunci = mode demo
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
-const SNAP_BASE = IS_PROD ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com';
-const API_BASE = IS_PROD ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
-const PAY_WINDOW_MIN = 30;
-
+const DATA_DIR = path.join(__dirname, 'data');
+const PAY_WINDOW_MIN = 30; // batas waktu bayar jika pelanggan belum menekan "Saya sudah bayar"
+const MAX_QRIS_BYTES = 2 * 1024 * 1024;
+const QRIS_EXT = ['png', 'jpg', 'webp'];
 const CATEGORIES = ['makanan', 'minuman', 'snack'];
 const ORDER_STATUSES = ['pending_payment', 'paid', 'preparing', 'ready', 'completed', 'cancelled', 'expired'];
-
-const app = express();
-app.disable('x-powered-by');
-app.set('trust proxy', 1);
-app.use(express.json({ limit: '50kb' }));
-app.use((req, res, next) => {
-  res.set('X-Content-Type-Options', 'nosniff');
-  res.set('Referrer-Policy', 'same-origin');
-  res.set('Permissions-Policy', 'geolocation=(self)');
-  next();
-});
 
 // ---------- Utilitas ----------
 function limiter(max, windowMs) {
@@ -90,9 +75,7 @@ function checkLocation(loc) {
   return { ok: true, distance, radius: s.radius, reason: 'inside' };
 }
 
-function newOrderId() {
-  return 'WS-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
-}
+const newOrderId = () => 'WS-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(6).toString('hex').toUpperCase();
 
 function publicOrder(o) {
   return {
@@ -107,236 +90,24 @@ function publicOrder(o) {
     customer: { name: o.customer.name, table: o.customer.table },
     payment: {
       method: o.payment.method,
-      provider: o.payment.provider,
-      snapToken: o.payment.snapToken || null,
-      qrString: o.payment.qrString || null,
-      qrUrl: o.payment.qrUrl || null,
       expiresAt: o.payment.expiresAt,
+      claimedAt: o.payment.claimedAt || null,
       paidAt: o.payment.paidAt || null
     }
   };
 }
 
-// ---------- Midtrans ----------
-const authHeader = () => 'Basic ' + Buffer.from(SERVER_KEY + ':').toString('base64');
-
-async function midtransRequest(url, body, method = 'POST') {
-  const res = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: authHeader() },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await res.json().catch(() => ({}));
-  const sc = data.status_code ? String(data.status_code) : '';
-  if (!res.ok || (sc && !['200', '201', '407'].includes(sc))) {
-    const msg = (data.error_messages && data.error_messages.join(', ')) || data.status_message || `Midtrans error (${res.status})`;
-    const err = new Error(msg);
-    err.status = 502;
-    throw err;
-  }
-  return data;
-}
-
-function midtransPayload(order) {
-  const items = order.items.map(i => ({ id: i.id, price: i.price, quantity: i.qty, name: i.name.slice(0, 50) }));
-  if (order.tax > 0) items.push({ id: 'pajak', price: order.tax, quantity: 1, name: `Pajak ${order.taxPercent}%` });
-  const phone = order.customer.phone || undefined;
-  return {
-    transaction_details: { order_id: order.id, gross_amount: order.total },
-    item_details: items,
-    customer_details: { first_name: order.customer.name.slice(0, 40), phone }
-  };
-}
-
-async function createPayment(order, method) {
-  const expiresAt = new Date(Date.now() + PAY_WINDOW_MIN * 60000).toISOString();
-  const base = { method, expiresAt };
-
-  if (MOCK) {
-    return { ...base, provider: 'mock', snapToken: method === 'snap' ? 'mock' : null, qrString: method === 'qris' ? `MOCK-QRIS|${order.id}|${order.total}` : null };
-  }
-
-  if (method === 'snap') {
-    const data = await midtransRequest(`${SNAP_BASE}/snap/v1/transactions`, {
-      ...midtransPayload(order),
-      expiry: { unit: 'minutes', duration: PAY_WINDOW_MIN }
-    });
-    return { ...base, provider: 'midtrans', snapToken: data.token };
-  }
-
-  // QRIS via Core API
-  const data = await midtransRequest(`${API_BASE}/v2/charge`, {
-    payment_type: 'qris',
-    ...midtransPayload(order),
-    qris: { acquirer: 'gopay' },
-    custom_expiry: { expiry_duration: PAY_WINDOW_MIN, unit: 'minute' }
-  });
-  const qrAction = (data.actions || []).find(a => a.name === 'generate-qr-code');
-  return { ...base, provider: 'midtrans', qrString: data.qr_string || null, qrUrl: qrAction ? qrAction.url : null, transactionId: data.transaction_id };
-}
-
-function applyMidtransStatus(order, tx) {
-  const t = tx.transaction_status;
-  const fraud = tx.fraud_status;
-  let next = null;
-  if (t === 'settlement' || (t === 'capture' && (!fraud || fraud === 'accept'))) next = 'paid';
-  else if (t === 'expire') next = 'expired';
-  else if (t === 'cancel' || t === 'deny') next = 'cancelled';
-  if (!next || order.status !== 'pending_payment') return false;
-  order.status = next;
-  if (next === 'paid') order.payment.paidAt = new Date().toISOString();
-  if (tx.transaction_id) order.payment.transactionId = tx.transaction_id;
-  db.save();
-  return true;
-}
-
-const lastSync = new Map();
-async function syncWithMidtrans(order) {
-  if (MOCK || order.status !== 'pending_payment') return;
-  const now = Date.now();
-  if (now - (lastSync.get(order.id) || 0) < 3500) return;
-  lastSync.set(order.id, now);
-  try {
-    const tx = await midtransRequest(`${API_BASE}/v2/${encodeURIComponent(order.id)}/status`, null, 'GET');
-    applyMidtransStatus(order, tx);
-  } catch { /* pesanan belum punya transaksi / jaringan: abaikan, webhook tetap jalan */ }
-}
-
+// Pesanan kedaluwarsa jika tidak dibayar. Jika pelanggan sudah menekan "Saya sudah bayar",
+// pesanan menunggu kasir dan tidak kedaluwarsa otomatis.
 function expireIfNeeded(order) {
-  if (order.status === 'pending_payment' && Date.now() > new Date(order.payment.expiresAt).getTime() + 60000) {
+  if (order.status === 'pending_payment' && !order.payment.claimedAt &&
+      Date.now() > new Date(order.payment.expiresAt).getTime() + 60000) {
     order.status = 'expired';
     db.save();
   }
 }
 
-// ---------- API publik ----------
-app.get('/api/config', (req, res) => {
-  const s = db.settings;
-  res.json({
-    name: s.name, tagline: s.tagline, address: s.address, hours: s.hours,
-    lat: s.lat, lng: s.lng, radius: s.radius, geofence: s.geofenceEnabled,
-    open: s.open, taxPercent: s.taxPercent,
-    midtrans: {
-      mode: MOCK ? 'mock' : IS_PROD ? 'production' : 'sandbox',
-      clientKey: CLIENT_KEY,
-      snapUrl: `${SNAP_BASE}/snap/snap.js`
-    }
-  });
-});
-
-app.get('/api/menu', (req, res) => {
-  res.json(db.menu.map(({ id, category, name, desc, price, emoji, imageUrl, available }) => ({ id, category, name, desc, price, emoji, imageUrl, available })));
-});
-
-app.post('/api/location/check', limiter(40, 60000), (req, res) => {
-  res.json(checkLocation(req.body));
-});
-
-app.post('/api/orders', limiter(10, 60000), wrap(async (req, res) => {
-  const s = db.settings;
-  if (!s.open) return res.status(403).json({ error: 'Restoran sedang tutup. Pemesanan belum bisa dilakukan.' });
-
-  const body = req.body || {};
-  const method = body.method === 'snap' ? 'snap' : body.method === 'qris' ? 'qris' : null;
-  if (!method) return res.status(400).json({ error: 'Pilih metode pembayaran.' });
-
-  const name = str(body.customer && body.customer.name, 60);
-  const phone = str(body.customer && body.customer.phone, 20);
-  const table = str(body.customer && body.customer.table, 10);
-  if (!name) return res.status(400).json({ error: 'Nama pemesan wajib diisi.' });
-  if (phone && !/^[0-9+\-\s]{6,20}$/.test(phone)) return res.status(400).json({ error: 'Nomor HP tidak valid.' });
-
-  // Geofence — dicek ulang di server saat pesanan dibuat.
-  const geo = checkLocation(body.location);
-  if (!geo.ok) return res.status(403).json({ error: geo.message || 'Lokasi di luar jangkauan.', geo });
-
-  if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 50) {
-    return res.status(400).json({ error: 'Keranjang kosong.' });
-  }
-  const merged = new Map();
-  for (const it of body.items) {
-    const qty = Number(it && it.qty);
-    if (!it || typeof it.id !== 'string' || !Number.isInteger(qty) || qty < 1 || qty > 20) {
-      return res.status(400).json({ error: 'Data pesanan tidak valid.' });
-    }
-    const cur = merged.get(it.id) || { qty: 0, note: '' };
-    cur.qty += qty;
-    cur.note = cur.note || str(it.note, 100);
-    merged.set(it.id, cur);
-  }
-
-  const items = [];
-  for (const [id, v] of merged) {
-    const m = db.menu.find(x => x.id === id);
-    if (!m || !m.available) return res.status(409).json({ error: `Menu "${m ? m.name : id}" sedang tidak tersedia. Perbarui keranjangmu.` });
-    if (v.qty > 20) return res.status(400).json({ error: 'Maksimal 20 porsi per menu.' });
-    items.push({ id: m.id, name: m.name, price: m.price, qty: v.qty, note: v.note });
-  }
-
-  const subtotal = items.reduce((a, i) => a + i.price * i.qty, 0);
-  const tax = Math.round((subtotal * s.taxPercent) / 100);
-  const total = subtotal + tax;
-  if (total < 1000) return res.status(400).json({ error: 'Total pesanan terlalu kecil.' });
-
-  const order = {
-    id: newOrderId(),
-    createdAt: new Date().toISOString(),
-    status: 'pending_payment',
-    items, subtotal, taxPercent: s.taxPercent, tax, total,
-    customer: { name, phone, table },
-    location: { lat: body.location && body.location.lat, lng: body.location && body.location.lng, accuracy: body.location && body.location.accuracy, distance: geo.distance },
-    payment: { method, provider: MOCK ? 'mock' : 'midtrans', expiresAt: new Date(Date.now() + PAY_WINDOW_MIN * 60000).toISOString() }
-  };
-
-  try {
-    order.payment = await createPayment(order, method);
-  } catch (e) {
-    console.error('[midtrans]', e.message);
-    return res.status(502).json({ error: 'Gagal membuat pembayaran. Coba lagi beberapa saat.' });
-  }
-
-  db.orders.push(order);
-  db.save();
-  res.status(201).json(publicOrder(order));
-}));
-
-app.get('/api/orders/:id', wrap(async (req, res) => {
-  const order = db.orders.find(o => o.id === req.params.id);
-  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
-  await syncWithMidtrans(order);
-  expireIfNeeded(order);
-  res.json(publicOrder(order));
-}));
-
-// Hanya aktif di MODE DEMO.
-app.post('/api/orders/:id/simulate-pay', (req, res) => {
-  if (!MOCK) return res.status(403).json({ error: 'Simulasi hanya tersedia di mode demo.' });
-  const order = db.orders.find(o => o.id === req.params.id);
-  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
-  if (order.status !== 'pending_payment') return res.status(409).json({ error: 'Pesanan ini sudah tidak menunggu pembayaran.' });
-  order.status = 'paid';
-  order.payment.paidAt = new Date().toISOString();
-  db.save();
-  res.json(publicOrder(order));
-});
-
-// Webhook Midtrans: Dashboard > Settings > Payment > Notification URL
-app.post('/api/midtrans/notification', (req, res) => {
-  if (MOCK) return res.status(404).end();
-  const b = req.body || {};
-  const expected = crypto.createHash('sha512').update(`${b.order_id}${b.status_code}${b.gross_amount}${SERVER_KEY}`).digest('hex');
-  const given = String(b.signature_key || '');
-  if (given.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected))) {
-    return res.status(403).json({ error: 'Signature tidak valid.' });
-  }
-  const order = db.orders.find(o => o.id === b.order_id);
-  if (!order) return res.status(404).json({ error: 'Order tidak ditemukan.' });
-  if (Math.round(parseFloat(b.gross_amount)) !== order.total) return res.status(400).json({ error: 'Nominal tidak cocok.' });
-  applyMidtransStatus(order, b);
-  res.json({ ok: true });
-});
-
-// ---------- Admin ----------
+// ---------- Auth admin ----------
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
@@ -361,6 +132,162 @@ function adminAuth(req, res, next) {
   next();
 }
 
+// ---------- Gambar QRIS ----------
+function sniffImage(buf) {
+  if (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
+  if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  return null;
+}
+function removeQrisFiles(except) {
+  for (const ext of QRIS_EXT) {
+    if (ext === except) continue;
+    try { fs.unlinkSync(path.join(DATA_DIR, `qris.${ext}`)); } catch { /* tidak ada */ }
+  }
+}
+
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('Referrer-Policy', 'same-origin');
+  res.set('Permissions-Policy', 'geolocation=(self)');
+  next();
+});
+
+// Unggah QRIS memakai parser JSON sendiri (batas lebih besar), jadi harus sebelum parser global.
+app.put('/api/admin/qris', adminAuth, express.json({ limit: '3mb' }), (req, res) => {
+  const data = req.body && typeof req.body.image === 'string' ? req.body.image : '';
+  const comma = data.indexOf(',');
+  if (comma < 0 || !/^data:image\/(png|jpeg|webp);base64$/.test(data.slice(0, comma))) {
+    return res.status(400).json({ error: 'File harus berupa gambar PNG, JPG, atau WebP.' });
+  }
+  const buf = Buffer.from(data.slice(comma + 1), 'base64');
+  if (buf.length > MAX_QRIS_BYTES) return res.status(400).json({ error: 'Ukuran gambar maksimal 2 MB.' });
+  const ext = sniffImage(buf);
+  if (!ext) return res.status(400).json({ error: 'Isi file bukan gambar PNG, JPG, atau WebP yang valid.' });
+
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const target = path.join(DATA_DIR, `qris.${ext}`);
+  fs.writeFileSync(target + '.tmp', buf);
+  fs.renameSync(target + '.tmp', target);
+  removeQrisFiles(ext);
+  db.settings.qrisImage = `qris.${ext}`;
+  db.settings.qrisVersion = Date.now();
+  db.save();
+  res.json({ qrisImage: db.settings.qrisImage, qrisVersion: db.settings.qrisVersion });
+});
+
+app.use(express.json({ limit: '50kb' }));
+
+// ---------- API publik ----------
+app.get('/api/config', (req, res) => {
+  const s = db.settings;
+  res.json({
+    name: s.name, tagline: s.tagline, address: s.address, hours: s.hours,
+    lat: s.lat, lng: s.lng, radius: s.radius, geofence: s.geofenceEnabled,
+    open: s.open, taxPercent: s.taxPercent,
+    payment: { ready: !!s.qrisImage, merchant: s.qrisMerchant || '', version: s.qrisVersion || 0 }
+  });
+});
+
+app.get('/api/menu', (req, res) => {
+  res.json(db.menu.map(({ id, category, name, desc, price, emoji, imageUrl, available }) => ({ id, category, name, desc, price, emoji, imageUrl, available })));
+});
+
+app.get('/api/qris', (req, res) => {
+  const m = /^qris\.(png|jpg|webp)$/.exec(db.settings.qrisImage || '');
+  const file = m && path.join(DATA_DIR, m[0]);
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Gambar QRIS belum diunggah.' });
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(file);
+});
+
+app.post('/api/location/check', limiter(40, 60000), (req, res) => {
+  res.json(checkLocation(req.body));
+});
+
+app.post('/api/orders', limiter(10, 60000), (req, res) => {
+  const s = db.settings;
+  if (!s.open) return res.status(403).json({ error: 'Restoran sedang tutup. Pemesanan belum bisa dilakukan.' });
+  if (!s.qrisImage) return res.status(503).json({ error: 'Pembayaran QRIS belum diatur oleh restoran. Silakan hubungi kasir.' });
+
+  const body = req.body || {};
+  const name = str(body.customer && body.customer.name, 60);
+  const phone = str(body.customer && body.customer.phone, 20);
+  const table = str(body.customer && body.customer.table, 10);
+  if (!name) return res.status(400).json({ error: 'Nama pemesan wajib diisi.' });
+  if (phone && !/^[0-9+\-\s]{6,20}$/.test(phone)) return res.status(400).json({ error: 'Nomor HP tidak valid.' });
+
+  // Geofence — dicek ulang di server saat pesanan dibuat.
+  const geo = checkLocation(body.location);
+  if (!geo.ok) return res.status(403).json({ error: geo.message || 'Lokasi di luar jangkauan.', geo });
+
+  if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 50) {
+    return res.status(400).json({ error: 'Pesanan kosong.' });
+  }
+  const merged = new Map();
+  for (const it of body.items) {
+    const qty = Number(it && it.qty);
+    if (!it || typeof it.id !== 'string' || !Number.isInteger(qty) || qty < 1 || qty > 20) {
+      return res.status(400).json({ error: 'Data pesanan tidak valid.' });
+    }
+    const cur = merged.get(it.id) || { qty: 0, note: '' };
+    cur.qty += qty;
+    cur.note = cur.note || str(it.note, 100);
+    merged.set(it.id, cur);
+  }
+
+  const items = [];
+  for (const [id, v] of merged) {
+    const m = db.menu.find(x => x.id === id);
+    if (!m || !m.available) return res.status(409).json({ error: `Menu "${m ? m.name : id}" sedang tidak tersedia. Perbarui pesananmu.` });
+    if (v.qty > 20) return res.status(400).json({ error: 'Maksimal 20 porsi per menu.' });
+    items.push({ id: m.id, name: m.name, price: m.price, qty: v.qty, note: v.note });
+  }
+
+  // Harga selalu dihitung ulang di server dari daftar menu.
+  const subtotal = items.reduce((a, i) => a + i.price * i.qty, 0);
+  const tax = Math.round((subtotal * s.taxPercent) / 100);
+  const total = subtotal + tax;
+  if (total < 1000) return res.status(400).json({ error: 'Total pesanan terlalu kecil.' });
+
+  const order = {
+    id: newOrderId(),
+    createdAt: new Date().toISOString(),
+    status: 'pending_payment',
+    items, subtotal, taxPercent: s.taxPercent, tax, total,
+    customer: { name, phone, table },
+    location: { lat: body.location && body.location.lat, lng: body.location && body.location.lng, accuracy: body.location && body.location.accuracy, distance: geo.distance },
+    payment: { method: 'qris_static', expiresAt: new Date(Date.now() + PAY_WINDOW_MIN * 60000).toISOString(), claimedAt: null, paidAt: null }
+  };
+  db.orders.push(order);
+  db.save();
+  res.status(201).json(publicOrder(order));
+});
+
+app.get('/api/orders/:id', (req, res) => {
+  const order = db.orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
+  expireIfNeeded(order);
+  res.json(publicOrder(order));
+});
+
+// Pelanggan menekan "Saya sudah bayar". Ini hanya menandai; kasir yang mengonfirmasi.
+app.post('/api/orders/:id/claim', limiter(20, 60000), (req, res) => {
+  const order = db.orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
+  expireIfNeeded(order);
+  if (order.status !== 'pending_payment') return res.status(409).json({ error: 'Pesanan ini sudah tidak menunggu pembayaran.' });
+  if (!order.payment.claimedAt) {
+    order.payment.claimedAt = new Date().toISOString();
+    db.save();
+  }
+  res.json(publicOrder(order));
+});
+
+// ---------- Admin ----------
 app.post('/api/admin/login', limiter(10, 10 * 60000), (req, res) => {
   const { username, password } = req.body || {};
   const ok = safeEqual(String(username || ''), ADMIN_USER) & safeEqual(String(password || ''), ADMIN_PASSWORD);
@@ -371,33 +298,33 @@ app.post('/api/admin/login', limiter(10, 10 * 60000), (req, res) => {
 const admin = express.Router();
 admin.use(adminAuth);
 
-admin.get('/orders', wrap(async (req, res) => {
-  const pend = db.orders.filter(o => o.status === 'pending_payment');
-  await Promise.all(pend.map(syncWithMidtrans));
-  pend.forEach(expireIfNeeded);
+admin.get('/orders', (req, res) => {
+  db.orders.filter(o => o.status === 'pending_payment').forEach(expireIfNeeded);
   const list = [...db.orders].reverse().slice(0, 300).map(o => ({
     ...publicOrder(o),
     phone: o.customer.phone,
     distance: o.location && o.location.distance
   }));
   res.json(list);
-}));
+});
 
 admin.patch('/orders/:id', (req, res) => {
   const order = db.orders.find(o => o.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Pesanan tidak ditemukan.' });
   const next = req.body && req.body.status;
   const allowed = {
-    pending_payment: ['cancelled'],
+    pending_payment: ['paid', 'cancelled'], // 'paid' = kasir mengonfirmasi uang sudah masuk
     paid: ['preparing', 'cancelled'],
     preparing: ['ready', 'cancelled'],
     ready: ['completed', 'cancelled'],
-    completed: [], cancelled: [], expired: []
+    completed: [], cancelled: [],
+    expired: ['paid'] // pelanggan terlambat bayar tetapi uangnya masuk
   };
   if (!ORDER_STATUSES.includes(next) || !(allowed[order.status] || []).includes(next)) {
     return res.status(400).json({ error: 'Perubahan status tidak diizinkan.' });
   }
   order.status = next;
+  if (next === 'paid') order.payment.paidAt = new Date().toISOString();
   db.save();
   res.json({ ok: true, status: next });
 });
@@ -448,7 +375,14 @@ admin.delete('/menu/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-admin.get('/settings', (req, res) => res.json({ ...db.settings, paymentMode: MOCK ? 'mock' : IS_PROD ? 'production' : 'sandbox' }));
+admin.delete('/qris', (req, res) => {
+  removeQrisFiles();
+  db.settings.qrisImage = '';
+  db.save();
+  res.json({ ok: true });
+});
+
+admin.get('/settings', (req, res) => res.json(db.settings));
 admin.put('/settings', (req, res) => {
   const b = req.body || {};
   const s = db.settings;
@@ -457,6 +391,7 @@ admin.put('/settings', (req, res) => {
   if (b.tagline !== undefined) next.tagline = str(b.tagline, 120);
   if (b.address !== undefined) next.address = str(b.address, 200);
   if (b.hours !== undefined) next.hours = str(b.hours, 80);
+  if (b.qrisMerchant !== undefined) next.qrisMerchant = str(b.qrisMerchant, 80);
   if (b.lat !== undefined || b.lng !== undefined) {
     const lat = Number(b.lat), lng = Number(b.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Koordinat tidak valid.' });
@@ -481,7 +416,7 @@ admin.put('/settings', (req, res) => {
   if (b.open !== undefined) next.open = !!b.open;
   Object.assign(db.settings, next);
   db.save();
-  res.json({ ...db.settings, paymentMode: MOCK ? 'mock' : IS_PROD ? 'production' : 'sandbox' });
+  res.json(db.settings);
 });
 
 app.use('/api/admin', admin);
@@ -493,6 +428,8 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Endpoint tidak dite
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Ukuran data terlalu besar.' });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Format data tidak valid.' });
   console.error(err);
   res.status(err.status || 500).json({ error: err.status ? err.message : 'Terjadi kesalahan di server.' });
 });
@@ -500,7 +437,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`\n  ${db.settings.name} berjalan di http://localhost:${PORT}`);
   console.log(`  Admin:      http://localhost:${PORT}/admin/`);
-  console.log(`  Pembayaran: ${MOCK ? 'MODE DEMO (tanpa Midtrans, pembayaran disimulasikan)' : IS_PROD ? 'Midtrans PRODUCTION' : 'Midtrans SANDBOX'}`);
+  console.log(`  Pembayaran: QRIS statis dengan konfirmasi kasir`);
+  if (!db.settings.qrisImage) console.log('  ⚠  Gambar QRIS belum diunggah — buka Admin > Pengaturan > Pembayaran QRIS agar pelanggan bisa memesan.');
   if (!process.env.ADMIN_PASSWORD) console.log('  ⚠  ADMIN_PASSWORD belum diatur — memakai "admin123". Ganti di file .env sebelum online.');
   console.log('');
 });

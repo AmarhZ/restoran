@@ -13,12 +13,15 @@
   const NEXT = {
     paid: { to: 'preparing', label: 'Mulai siapkan' },
     preparing: { to: 'ready', label: 'Tandai siap' },
-    ready: { to: 'completed', label: 'Selesaikan' }
+    ready: { to: 'completed', label: 'Selesaikan' },
+    pending_payment: { to: 'paid', label: 'Konfirmasi pembayaran' },
+    expired: { to: 'paid', label: 'Konfirmasi pembayaran' }
   };
   const CAN_CANCEL = ['pending_payment', 'paid', 'preparing', 'ready'];
   const FILTERS = [
+    { id: 'confirm', label: 'Perlu konfirmasi', test: o => o.status === 'pending_payment' && !!o.payment.claimedAt },
     { id: 'active', label: 'Perlu diproses', test: o => ['paid', 'preparing', 'ready'].includes(o.status) },
-    { id: 'pending', label: 'Menunggu bayar', test: o => o.status === 'pending_payment' },
+    { id: 'pending', label: 'Belum bayar', test: o => o.status === 'pending_payment' && !o.payment.claimedAt },
     { id: 'done', label: 'Selesai', test: o => o.status === 'completed' },
     { id: 'closed', label: 'Batal / kedaluwarsa', test: o => ['cancelled', 'expired'].includes(o.status) },
     { id: 'all', label: 'Semua', test: () => true }
@@ -27,7 +30,7 @@
   let token = sessionStorage.getItem('ws_admin') || '';
   let orders = [], menu = [], settings = null;
   let filter = 'active';
-  let knownPaid = null; // Set id pesanan yang sudah pernah terlihat
+  let knownClaims = null; // id pesanan yang sudah pernah terlihat mengaku sudah bayar
   let fresh = new Set();
   let pollTimer;
   let map, marker, circle;
@@ -111,20 +114,22 @@
       <div class="stat"><b>${todays.length}</b><span>Pesanan dibayar hari ini</span></div>
       <div class="stat"><b>${rp(revenue)}</b><span>Pendapatan hari ini</span></div>`;
     const badge = $('#orders-badge');
-    badge.textContent = active; badge.hidden = active === 0;
+    const claims = orders.filter(o => o.status === 'pending_payment' && o.payment.claimedAt).length;
+    badge.textContent = active + claims; badge.hidden = active + claims === 0;
   }
 
   function renderFilters() {
     $('#filters').innerHTML = FILTERS.map(f => {
       const n = orders.filter(f.test).length;
-      return `<button class="chip" role="tab" aria-selected="${f.id === filter}" data-f="${f.id}">${f.label} (${n})</button>`;
+      return `<button class="chip${f.id === 'confirm' && n > 0 ? ' alert' : ''}" role="tab" aria-selected="${f.id === filter}" data-f="${f.id}">${f.label} (${n})</button>`;
     }).join('');
   }
 
   function renderOrders() {
     renderStats(); renderFilters();
     const f = FILTERS.find(x => x.id === filter);
-    const list = orders.filter(f.test);
+    let list = orders.filter(f.test);
+    if (f.id === 'confirm') list = [...list].sort((a, b) => new Date(a.payment.claimedAt) - new Date(b.payment.claimedAt));
     const root = $('#orders-list');
     if (!list.length) {
       root.innerHTML = '<div class="empty"><strong>Belum ada pesanan di sini</strong>Pesanan baru akan muncul otomatis.</div>';
@@ -132,15 +137,17 @@
     }
     root.innerHTML = list.map(o => {
       const next = NEXT[o.status];
-      return `<article class="order${fresh.has(o.id) ? ' fresh' : ''}">
+      const claimed = o.status === 'pending_payment' && o.payment.claimedAt;
+      return `<article class="order${fresh.has(o.id) ? ' fresh' : ''}${claimed ? ' claimed' : ''}">
         <div class="order-top">
           <div>
             <div class="order-code">${esc(o.id.slice(-6))}</div>
             <div class="order-meta">${esc(o.customer.name)}${o.customer.table ? ` · Meja ${esc(o.customer.table)}` : ''}${o.phone ? ` · ${esc(o.phone)}` : ''}</div>
-            <div class="order-meta">${esc(timeFmt(o.createdAt))}${o.distance != null ? ` · ${esc(o.distance)} m dari restoran` : ''} · ${o.payment.method === 'qris' ? 'QRIS' : 'Midtrans'}</div>
+            <div class="order-meta">${esc(timeFmt(o.createdAt))}${o.distance != null ? ` · ${esc(o.distance)} m dari restoran` : ''} · QRIS</div>
           </div>
           <span class="pill ${esc(o.status)}">${esc(STATUS_LABEL[o.status] || o.status)}</span>
         </div>
+        ${claimed ? `<div class="notice info" style="margin:10px 0 0">Pelanggan mengaku sudah bayar pukul ${esc(new Date(o.payment.claimedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }))}. Cek mutasi atau notifikasi QRIS dulu, lalu konfirmasi.</div>` : ''}
         <ul>${o.items.map(i => `<li><span>${i.qty}× ${esc(i.name)}${i.note ? `<small>Catatan: ${esc(i.note)}</small>` : ''}</span><span>${rp(i.price * i.qty)}</span></li>`).join('')}</ul>
         <div class="order-total"><span>Total</span><span>${rp(o.total)}</span></div>
         <div class="order-actions">
@@ -154,17 +161,20 @@
   async function loadOrders(initial) {
     try {
       orders = await API('/orders');
-      const paidNow = new Set(orders.filter(o => o.status !== 'pending_payment' && o.status !== 'expired' && o.status !== 'cancelled').map(o => o.id));
-      if (knownPaid === null) knownPaid = paidNow;
-      else {
-        const added = [...paidNow].filter(id => !knownPaid.has(id));
+      const claims = new Set(orders.filter(o => o.status === 'pending_payment' && o.payment.claimedAt).map(o => o.id));
+      if (knownClaims === null) {
+        knownClaims = claims;
+        if (claims.size) filter = 'confirm';
+      } else {
+        const added = [...claims].filter(id => !knownClaims.has(id));
         if (added.length) {
           added.forEach(id => fresh.add(id));
+          if (filter === 'active') filter = 'confirm'; // klaim baru perlu dilihat kasir sekarang
           beep();
-          toast(added.length === 1 ? 'Ada pesanan baru yang sudah dibayar.' : `${added.length} pesanan baru sudah dibayar.`);
+          toast(added.length === 1 ? 'Pelanggan mengaku sudah bayar. Cek mutasi lalu konfirmasi.' : `${added.length} pelanggan mengaku sudah bayar. Cek mutasi lalu konfirmasi.`);
           setTimeout(() => { fresh.clear(); renderOrders(); }, 2600);
         }
-        knownPaid = paidNow;
+        knownClaims = claims;
       }
       renderOrders();
     } catch (e) { if (initial) toast(e.message, true); }
@@ -182,12 +192,16 @@
     if (!adv && !can) return;
     const id = (adv || can).dataset[adv ? 'adv' : 'cancel'];
     const to = adv ? adv.dataset.to : 'cancelled';
-    if (can && !confirm('Batalkan pesanan ini? Jika sudah dibayar, lakukan refund lewat dashboard Midtrans.')) return;
+    if (can && !confirm('Batalkan pesanan ini? Jika pelanggan sudah membayar, kembalikan uangnya secara manual.')) return;
+    if (adv && to === 'paid') {
+      const o = orders.find(x => x.id === id);
+      if (!confirm(`Pastikan uang ${rp(o ? o.total : 0)} untuk pesanan ${id.slice(-6)} sudah masuk. Konfirmasi pembayaran?`)) return;
+    }
     try {
       await API('/orders/' + encodeURIComponent(id), { method: 'PATCH', body: { status: to } });
       const o = orders.find(x => x.id === id); if (o) o.status = to;
       renderOrders();
-      toast(to === 'cancelled' ? 'Pesanan dibatalkan.' : 'Status pesanan diperbarui.');
+      toast(to === 'cancelled' ? 'Pesanan dibatalkan.' : to === 'paid' ? 'Pembayaran dikonfirmasi. Pesanan masuk ke dapur.' : 'Status pesanan diperbarui.');
     } catch (ex) { toast(ex.message, true); }
   });
 
@@ -265,14 +279,8 @@
     $('#s-tax').value = s.taxPercent;
     $('#s-name').textContent = s.name;
     document.title = `Admin — ${s.name}`;
-    const modes = {
-      mock: 'Mode demo: kunci Midtrans belum diisi, pembayaran hanya simulasi. Isi MIDTRANS_SERVER_KEY dan MIDTRANS_CLIENT_KEY di file .env untuk mulai menerima pembayaran.',
-      sandbox: 'Midtrans Sandbox aktif: transaksi uji coba, tidak ada uang sungguhan.',
-      production: 'Midtrans Production aktif: transaksi memakai uang sungguhan.'
-    };
-    const pm = $('#pay-mode');
-    pm.textContent = modes[s.paymentMode] || '';
-    pm.className = 'notice ' + (s.paymentMode === 'production' ? 'ok' : 'info');
+    $('#s-merchant').value = s.qrisMerchant || '';
+    renderQris();
   }
 
   function initMap() {
@@ -319,7 +327,8 @@
           geofenceEnabled: $('#s-geo').checked, open: $('#s-open').checked,
           name: $('#s-name-in').value, tagline: $('#s-tagline').value,
           address: $('#s-address').value, hours: $('#s-hours').value,
-          taxPercent: Number($('#s-tax').value)
+          taxPercent: Number($('#s-tax').value),
+          qrisMerchant: $('#s-merchant').value
         }
       });
       fillSettings(); syncFromInputs();
@@ -327,6 +336,35 @@
       setTimeout(() => { msg.hidden = true; }, 3000);
     } catch (ex) { msg.className = 'notice bad'; msg.textContent = ex.message; msg.hidden = false; }
   });
+
+  // ---------- QRIS ----------
+  function renderQris() {
+    const has = !!(settings && settings.qrisImage);
+    $('#qris-prev').innerHTML = has
+      ? `<img src="/api/qris?v=${encodeURIComponent(settings.qrisVersion)}" alt="Gambar QRIS saat ini">`
+      : '<span>Belum ada gambar</span>';
+    $('#qris-del').hidden = !has;
+    $('#qris-btn-text').textContent = has ? 'Ganti gambar QRIS' : 'Unggah gambar QRIS';
+    $('#qris-warn').hidden = has;
+  }
+  $('#qris-file').addEventListener('change', async e => {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return toast('File harus PNG, JPG, atau WebP.', true);
+    if (file.size > 2 * 1024 * 1024) return toast('Ukuran gambar maksimal 2 MB.', true);
+    try {
+      const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Gagal membaca file.')); r.readAsDataURL(file); });
+      const r = await API('/qris', { method: 'PUT', body: { image: dataUrl } });
+      settings.qrisImage = r.qrisImage; settings.qrisVersion = r.qrisVersion;
+      renderQris(); toast('Gambar QRIS disimpan.');
+    } catch (ex) { toast(ex.message, true); }
+  });
+  $('#qris-del').addEventListener('click', async () => {
+    if (!confirm('Hapus gambar QRIS? Pelanggan tidak bisa memesan sampai gambar baru diunggah.')) return;
+    try { await API('/qris', { method: 'DELETE' }); settings.qrisImage = ''; renderQris(); toast('Gambar QRIS dihapus.'); }
+    catch (ex) { toast(ex.message, true); }
+  });
+  $('#go-settings').addEventListener('click', () => setTab('settings'));
 
   // ---------- Mulai ----------
   async function start() {

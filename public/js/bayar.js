@@ -7,7 +7,7 @@
   const id = new URLSearchParams(location.search).get('o');
   const root = $('#root');
 
-  let config, order, snapLoaded = false, snapAutoOpened = false, pollTimer, tickTimer, qrDrawn = false;
+  let config, order, pollTimer, tickTimer;
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { method: opts.method || 'GET' });
@@ -26,6 +26,7 @@
   }
 
   const shortCode = o => o.id.slice(-6);
+  const qrisUrl = () => `/api/qris?v=${encodeURIComponent(config.payment.version)}`;
 
   function summary(o) {
     return `<div class="panel">
@@ -46,22 +47,31 @@
   }
 
   function pendingPanel(o) {
-    const mock = config.midtrans.mode === 'mock';
-    const isQris = o.payment.method === 'qris';
+    const claimed = !!o.payment.claimedAt;
+    const merchant = config.payment.merchant;
     return `<div class="panel hot">
-      ${mock ? '<span class="demo-tag">Mode demo — belum terhubung ke Midtrans</span>' : ''}
-      <h1>Selesaikan pembayaran</h1>
-      <p class="muted" style="margin:0">Bayar dalam <span class="countdown" id="cd">--:--</span>. Pesanan diteruskan ke dapur setelah pembayaran berhasil.</p>
-      <div class="big-total" style="margin-top:16px">${rp(o.total)}</div>
-      ${isQris ? `
-        <div class="qr-box" id="qr" aria-label="Kode QRIS"></div>
-        <p class="muted" style="text-align:center;margin:0">Buka e-wallet atau m-banking, pilih <strong>Scan QR</strong>, lalu arahkan ke kode di atas.</p>`
-        : `<p class="muted" style="margin:18px 0 12px">Pilih transfer bank, e-wallet, kartu, atau metode lain di jendela pembayaran Midtrans.</p>
-           <button class="btn block" id="snap-btn" type="button">Pilih metode pembayaran</button>`}
-      ${mock ? `<hr class="hr">
-        <p class="muted" style="margin:0 0 10px">Di mode demo, tidak ada uang sungguhan. Tekan tombol di bawah untuk menyimulasikan pembayaran berhasil.</p>
-        <button class="btn alt block" id="sim-btn" type="button">Simulasikan pembayaran berhasil</button>` : ''}
-      <p class="muted" style="margin:18px 0 0;font-size:.9rem">Halaman ini diperbarui otomatis. Jangan tutup sebelum pembayaran selesai.</p>
+      <h1>${claimed ? 'Menunggu konfirmasi kasir' : 'Bayar dengan QRIS'}</h1>
+      ${claimed
+        ? '<p class="muted" style="margin:0">Kasir sedang memeriksa pembayaranmu. Halaman ini berubah sendiri setelah pembayaran dikonfirmasi.</p>'
+        : '<p class="muted" style="margin:0">Selesaikan dalam <span class="countdown" id="cd">--:--</span>, lalu tekan tombol <strong>Saya sudah bayar</strong>.</p>'}
+      <div class="big-total">${rp(o.total)}</div>
+      <p class="muted" style="margin:4px 0 0">Masukkan nominal tepat seperti di atas.</p>
+
+      <div class="qr-box" id="qr"><img src="${qrisUrl()}" alt="Kode QRIS${merchant ? ' ' + esc(merchant) : ''}"></div>
+      ${merchant ? `<p class="muted" style="text-align:center;margin:0 0 4px">Penerima: <strong>${esc(merchant)}</strong></p>` : ''}
+
+      <ol class="how">
+        <li>Buka e-wallet atau m-banking, pilih <strong>Scan QR</strong>.</li>
+        <li>Arahkan ke kode di atas, lalu ketik nominal <strong>${rp(o.total)}</strong>.</li>
+        <li>Setelah berhasil, tekan <strong>Saya sudah bayar</strong>.</li>
+      </ol>
+
+      ${claimed ? '' : '<button class="btn block" id="claim-btn" type="button">Saya sudah bayar</button>'}
+      <div class="pay-tools">
+        <button class="btn alt" id="copy-amt" type="button">Salin nominal</button>
+        <a class="btn alt" href="${qrisUrl()}" download="qris-${esc(config.name.replace(/\s+/g, '-').toLowerCase())}">Simpan gambar QRIS</a>
+      </div>
+      <p class="muted" style="margin:14px 0 0;font-size:.88rem">Membayar dari ponsel yang sama? Simpan gambar QRIS, lalu pilih dari galeri di menu Scan QR e-wallet-mu.</p>
     </div>`;
   }
 
@@ -85,84 +95,41 @@
     const expired = o.status === 'expired';
     return `<div class="panel hot">
       <h1 class="state-title">${expired ? 'Waktu pembayaran habis' : 'Pesanan dibatalkan'}</h1>
-      <p class="muted">${expired ? 'Pembayaran tidak diterima sebelum batas waktu.' : 'Pesanan ini dibatalkan dan tidak akan diproses.'} Kamu belum dikenai biaya. Buat pesanan baru dari menu.</p>
+      <p class="muted">${expired ? 'Pembayaran tidak diterima sebelum batas waktu.' : 'Pesanan ini dibatalkan dan tidak akan diproses.'} Jika kamu sudah membayar, tunjukkan bukti bayar dan kode <strong>${esc(shortCode(o))}</strong> ke kasir. Jika belum, buat pesanan baru dari menu.</p>
       <a class="btn block" style="margin-top:16px" href="/#menu">Kembali ke menu</a>
     </div>`;
   }
 
   function render() {
     const status = order.status;
-    const main = status === 'pending_payment' ? pendingPanel(order)
+    const pending = status === 'pending_payment';
+    const key = pending ? (order.payment.claimedAt ? 'claimed' : 'pending') : status;
+    const main = pending ? pendingPanel(order)
       : ['paid', 'preparing', 'ready', 'completed'].includes(status) ? paidPanel(order) : endedPanel(order);
-    // Hindari menggambar ulang panel yang sama (QR/Snap tidak berkedip)
-    const key = status === 'pending_payment' ? 'pending' : status;
+    // Panel yang sama tidak digambar ulang (gambar QRIS tidak berkedip)
     if (root.dataset.key !== key) {
       root.dataset.key = key;
-      qrDrawn = false;
       root.innerHTML = `<div class="pay-grid"><div id="main">${main}</div><div>${summary(order)}</div></div>`;
-      if (status === 'pending_payment') bindPending();
-    } else if (status !== 'pending_payment') {
+      if (pending) bindPending();
+    } else if (!pending) {
       $('#main').innerHTML = main;
     }
   }
 
-  function drawQr() {
-    if (qrDrawn) return;
-    const box = $('#qr');
-    if (!box) return;
-    box.innerHTML = '';
-    if (order.payment.qrString && window.QRCode) {
-      new window.QRCode(box, { text: order.payment.qrString, width: 236, height: 236, correctLevel: window.QRCode.CorrectLevel.M });
-      qrDrawn = true;
-    } else if (order.payment.qrUrl) {
-      const img = document.createElement('img');
-      img.alt = 'Kode QRIS';
-      img.src = order.payment.qrUrl;
-      box.appendChild(img);
-      qrDrawn = true;
-    } else {
-      box.textContent = 'QR belum tersedia';
-    }
-  }
-
-  function loadSnap() {
-    return new Promise((resolve, reject) => {
-      if (snapLoaded && window.snap) return resolve();
-      const s = document.createElement('script');
-      s.src = config.midtrans.snapUrl;
-      s.setAttribute('data-client-key', config.midtrans.clientKey);
-      s.onload = () => { snapLoaded = true; resolve(); };
-      s.onerror = () => reject(new Error('Gagal memuat Midtrans. Periksa koneksi internetmu.'));
-      document.head.appendChild(s);
-    });
-  }
-
-  async function openSnap() {
-    try {
-      await loadSnap();
-      window.snap.pay(order.payment.snapToken, {
-        onSuccess: () => poll(),
-        onPending: () => toast('Menunggu pembayaran kamu selesai.'),
-        onError: () => toast('Pembayaran gagal. Coba lagi atau pilih metode lain.', true),
-        onClose: () => { /* tombol tetap tersedia */ }
-      });
-    } catch (e) { toast(e.message, true); }
-  }
-
   function bindPending() {
-    const mock = config.midtrans.mode === 'mock';
-    if (order.payment.method === 'qris') drawQr();
-    else if (!mock) {
-      $('#snap-btn').addEventListener('click', openSnap);
-      if (!snapAutoOpened) { snapAutoOpened = true; openSnap(); }
-    } else {
-      $('#snap-btn').addEventListener('click', () => toast('Mode demo: gunakan tombol simulasi di bawah.'));
-    }
-    const sim = $('#sim-btn');
-    if (sim) sim.addEventListener('click', async () => {
-      sim.disabled = true;
-      try { order = await api(`/api/orders/${encodeURIComponent(id)}/simulate-pay`, { method: 'POST' }); render(); }
-      catch (e) { toast(e.message, true); sim.disabled = false; }
+    const img = $('#qr img');
+    if (img) img.addEventListener('error', () => { $('#qr').textContent = 'Gambar QRIS tidak dapat dimuat. Minta bantuan kasir.'; });
+
+    $('#copy-amt').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(String(order.total)); toast(`Nominal ${order.total} disalin.`); }
+      catch { toast(`Ketik nominal ${rp(order.total)} secara manual.`); }
+    });
+
+    const claim = $('#claim-btn');
+    if (claim) claim.addEventListener('click', async () => {
+      claim.disabled = true;
+      try { order = await api(`/api/orders/${encodeURIComponent(id)}/claim`, { method: 'POST' }); render(); toast('Terima kasih. Kasir akan memeriksa pembayaranmu.'); }
+      catch (e) { toast(e.message, true); claim.disabled = false; }
     });
     tick();
   }
@@ -184,10 +151,10 @@
   async function poll() {
     try {
       const o = await api(`/api/orders/${encodeURIComponent(id)}`);
-      const changed = o.status !== order.status;
+      const changed = o.status !== order.status || !!o.payment.claimedAt !== !!order.payment.claimedAt;
       order = o;
       if (changed || order.status !== 'pending_payment') render();
-      if (changed && order.status === 'paid') toast('Pembayaran diterima. Terima kasih!');
+      if (changed && order.status === 'paid') toast('Pembayaran dikonfirmasi. Terima kasih!');
     } catch { /* coba lagi pada putaran berikutnya */ }
     const done = ['completed', 'cancelled', 'expired'].includes(order.status);
     clearTimeout(pollTimer);

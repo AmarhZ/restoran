@@ -48,6 +48,7 @@
           <div><h1>Pesanan</h1><p class="muted">Diperbarui otomatis setiap beberapa detik.</p></div>
           <label class="sound"><input type="checkbox" id="sound" checked> Bunyi pesanan baru</label>
         </header>
+        <div id="qris-warn" class="notice bad" hidden role="alert" style="margin:0 0 16px">Gambar QRIS belum diunggah, jadi pelanggan belum bisa memesan. <button class="btn small" id="go-settings" type="button" style="margin-left:6px">Buka Pengaturan</button></div>
         <div class="stats" id="stats"></div>
         <div class="chips" id="filters" role="tablist" aria-label="Filter pesanan"></div>
         <div id="orders-list" class="orders"></div>
@@ -101,9 +102,18 @@
           </div>
 
           <div class="panel">
-            <h2>Pembayaran</h2>
-            <p id="pay-mode" class="notice info" style="margin-top:0"></p>
-            <p class="hint">Kunci Midtrans diatur lewat file <code>.env</code> di server, bukan di sini, agar tidak bocor lewat browser.</p>
+            <h2>Pembayaran QRIS</h2>
+            <p class="muted">Unggah gambar QRIS restoran dari bank atau e-wallet merchant. Pelanggan memindai gambar ini, lalu kasir mengonfirmasi pembayaran di tab Pesanan.</p>
+            <div class="qris-row">
+              <div class="qris-prev" id="qris-prev"><span>Belum ada gambar</span></div>
+              <div>
+                <label class="btn file-btn"><input type="file" id="qris-file" accept="image/png,image/jpeg,image/webp" class="sr-only"><span id="qris-btn-text">Unggah gambar QRIS</span></label>
+                <button class="btn danger small" id="qris-del" type="button" hidden style="margin-left:8px">Hapus gambar</button>
+                <p class="hint">PNG, JPG, atau WebP, maksimal 2 MB. Gambar langsung tersimpan setelah dipilih.</p>
+              </div>
+            </div>
+            <label class="field"><span>Nama merchant (ditampilkan ke pelanggan)</span><input id="s-merchant" maxlength="80" placeholder="Contoh: WARUNG SENJA"></label>
+            <p class="hint">Pelanggan bisa mencocokkan nama ini dengan nama penerima yang muncul di aplikasi bayar mereka. Tekan "Simpan pengaturan" untuk menyimpan nama ini.</p>
           </div>
 
           <div class="savebar">

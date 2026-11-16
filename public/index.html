@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Warung Senja — Pesan dari meja</title>
-  <meta name="description" content="Pesan makanan, minuman, dan snack langsung dari ponselmu. Bayar dengan QRIS atau Midtrans.">
+  <meta name="description" content="Pesan makanan, minuman, dan snack langsung dari ponselmu. Bayar dengan QRIS.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -104,7 +104,7 @@
         <div class="steps">
           <div class="step"><div class="step-no">1</div><h3>Cek lokasi</h3><p>Izinkan akses lokasi. Kami memastikan kamu berada di dalam radius restoran.</p></div>
           <div class="step"><div class="step-no">2</div><h3>Pilih menu</h3><p>Tambahkan makanan, minuman, dan snack ke pesanan. Tulis catatan jika perlu.</p></div>
-          <div class="step"><div class="step-no">3</div><h3>Bayar</h3><p>Bayar dengan QRIS atau metode lain lewat Midtrans. Dapur menerima pesanan setelah pembayaran berhasil.</p></div>
+          <div class="step"><div class="step-no">3</div><h3>Bayar</h3><p>Scan QRIS dengan e-wallet atau m-banking, lalu tekan "Saya sudah bayar". Dapur mulai memasak setelah kasir mengonfirmasi.</p></div>
         </div>
       </section>
 
@@ -119,7 +119,7 @@
             <dt>Alamat</dt><dd id="info-address">—</dd>
             <dt>Jam buka</dt><dd id="info-hours">—</dd>
             <dt>Jangkauan</dt><dd id="info-radius">—</dd>
-            <dt>Pembayaran</dt><dd>QRIS, e-wallet, transfer bank, dan kartu melalui Midtrans.</dd>
+            <dt>Pembayaran</dt><dd>QRIS dari e-wallet atau m-banking apa pun.</dd>
           </dl>
         </div>
       </section>
@@ -155,15 +155,10 @@
             <div class="sum" id="sum-tax-row"><span id="sum-tax-lbl">Pajak</span><span id="sum-tax">Rp0</span></div>
             <div class="sum total"><span>Total pembayaran</span><span id="sum-total">Rp0</span></div>
 
-            <fieldset class="pay-tiles" style="margin-top:14px">
-              <legend class="pay-label">Metode pembayaran</legend>
-              <label class="pay-tile"><input type="radio" name="method" value="qris" checked>
-                <svg class="pi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17.5 20H21v.01"/></svg>
-                <span>QRIS<small>Scan dengan e-wallet</small></span></label>
-              <label class="pay-tile"><input type="radio" name="method" value="snap">
-                <svg class="pi" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10.5h18M7 15h4"/></svg>
-                <span>Metode lain<small>Bank, kartu, e-wallet</small></span></label>
-            </fieldset>
+            <div class="pay-info">
+              <span class="pay-ico" aria-hidden="true"><svg class="pi" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17.5 20H21v.01"/></svg></span>
+              <p><b>Bayar dengan QRIS</b><small>Kode QRIS tampil di halaman berikutnya. Bisa dibayar dengan e-wallet atau m-banking apa pun.</small></p>
+            </div>
           </div>
 
           <div id="geo-notice" class="notice info" role="status">Lokasimu dicek saat kamu menekan tombol pesan.</div>

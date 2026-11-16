@@ -88,6 +88,11 @@
     $('#radar-limit-lbl').textContent = config.geofence ? `Radius ${config.radius} m` : 'Tanpa batas';
     $('#map-link').href = `https://www.openstreetmap.org/?mlat=${config.lat}&mlon=${config.lng}#map=18/${config.lat}/${config.lng}`;
     $('#closed').hidden = config.open;
+    if (!config.payment.ready) {
+      const n = $('#geo-notice');
+      n.className = 'notice bad';
+      n.textContent = 'Pembayaran QRIS belum diatur oleh restoran, jadi pesanan belum bisa dibuat.';
+    }
     if (!config.geofence) {
       $('#radar-msg').innerHTML = 'Tanpa batas lokasi<small>Restoran ini menerima pesanan dari mana saja.</small>';
       $('#radar-check').hidden = true;
@@ -261,6 +266,7 @@
     $('#cart-count').textContent = t.count;
     $('#cart-form').hidden = !has;
     $('#cart-foot').hidden = !has;
+    $('#pay-btn').disabled = !config.payment.ready;
     $('#mobile-bar').hidden = !has;
     $('#mb-count').textContent = t.count;
     $('#mb-total').textContent = rp(t.total);
@@ -314,6 +320,7 @@
   async function checkout(e) {
     e.preventDefault();
     if (busy) return;
+    if (!config.payment.ready) return toast('Pembayaran QRIS belum diatur oleh restoran.', 'bad');
     const lines = cartLines();
     if (!lines.length) return toast('Pesanan masih kosong.', 'bad');
     if (!config.open) return toast('Restoran sedang tutup.', 'bad');
@@ -331,13 +338,12 @@
         location = { lat: l.lat, lng: l.lng, accuracy: l.accuracy };
         setGeoNotice(`Lokasi sesuai (${fmtDist(l.distance)} dari restoran). Membuat pesanan…`, 'ok');
       }
-      const method = document.querySelector('input[name="method"]:checked').value;
       const order = await api('/api/orders', {
         method: 'POST',
         body: {
           items: lines.map(l => ({ id: l.m.id, qty: l.qty, note: l.note || '' })),
           customer: { name, phone: $('#f-phone').value.trim(), table: $('#f-table').value.trim() },
-          location, method
+          location
         }
       });
       cart = {}; saveCart();
@@ -347,7 +353,7 @@
     } catch (err) {
       setGeoNotice(err.message, 'bad');
     } finally {
-      btn.disabled = false;
+      btn.disabled = !config.payment.ready;
     }
   }
 

@@ -82,9 +82,9 @@ button { cursor: pointer; }
 .wrap { width: min(1100px, 100% - 40px); margin-inline: auto; }
 .site-header { position: sticky; top: 0; z-index: 30; background: var(--cream); border-bottom: 1px solid var(--line); }
 .site-header .wrap { display: flex; align-items: center; gap: 24px; height: 66px; }
-.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ocean); font-family: var(--display); font-style: italic; font-size: 1.8rem; line-height: 1; }
+.brand { white-space: nowrap; display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ocean); font-family: var(--display); font-style: italic; font-size: 1.8rem; line-height: 1; }
 .brand .mark { font-size: 1.5rem; }
-.site-header .nav { margin-left: auto; text-decoration: none; font-weight: 700; color: var(--ocean); }
+.site-header .nav { margin-left: auto; text-decoration: none; font-weight: 700; color: var(--ocean); white-space: nowrap; }
 .site-header .nav:hover { text-decoration: underline; text-underline-offset: 4px; }
 
 /* ---------- Halaman bayar ---------- */
@@ -106,8 +106,12 @@ button { cursor: pointer; }
 
 .big-total { font-family: var(--display); font-style: italic; font-size: clamp(3rem, 8vw, 4.4rem); line-height: 1; color: var(--cream); margin-top: 14px; }
 .countdown { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--cream); }
-.qr-box { width: 268px; height: 268px; margin: 22px auto; background: #fff; border-radius: 20px; display: grid; place-items: center; padding: 14px; color: var(--ink-2); font-weight: 600; text-align: center; }
-.qr-box img, .qr-box canvas { width: 100% !important; height: auto !important; }
+.qr-box { width: min(320px, 100%); min-height: 200px; margin: 22px auto; background: #fff; border-radius: 20px; display: grid; place-items: center; padding: 12px; color: var(--ink-2); font-weight: 600; text-align: center; }
+.qr-box img { width: 100%; height: auto; max-height: 460px; object-fit: contain; display: block; }
+.how { margin: 16px 0; padding-left: 1.3rem; color: rgba(238,232,223,.9); }
+.how li { margin: 4px 0; }
+.pay-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.pay-tools .btn { padding: 10px 12px; font-size: .92rem; }
 .demo-tag { display: inline-block; background: var(--beige); color: var(--ocean); font-weight: 800; font-size: .82rem; padding: 4px 12px; border-radius: 8px; margin-bottom: 12px; }
 .sum-line { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--beige); font-variant-numeric: tabular-nums; }
 .sum-line.total { font-weight: 800; color: var(--ocean); font-size: 1.1rem; border-bottom: 0; border-top: 1px solid var(--ocean); margin-top: 8px; padding-top: 10px; }
@@ -125,4 +129,10 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@media (max-width: 480px) {
+  .site-header .wrap { gap: 12px; }
+  .site-header .brand { font-size: 1.5rem; }
+  .site-header .nav { font-size: .9rem; }
 }
