@@ -2,13 +2,16 @@
   'use strict';
 
   const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const rp = n => 'Rp' + Number(n).toLocaleString('id-ID');
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const CATS = [
-    { id: 'makanan', label: 'Makanan' },
-    { id: 'minuman', label: 'Minuman' },
-    { id: 'snack', label: 'Snack' }
+    { id: 'all', label: 'Semua', icon: '🍽️' },
+    { id: 'makanan', label: 'Makanan', icon: '🍛' },
+    { id: 'minuman', label: 'Minuman', icon: '🧋' },
+    { id: 'snack', label: 'Snack', icon: '🍟' }
   ];
+  const mq = window.matchMedia('(max-width: 1099px)');
 
   const store = {
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
@@ -18,8 +21,10 @@
   let config = null;
   let menu = [];
   let cart = store.get('ws_cart', {}); // { id: { qty, note } }
+  let fav = store.get('ws_fav', []);
   let loc = null; // hasil cek lokasi terakhir
   let busy = false;
+  const view = { cat: 'all', tab: 'all', q: '', sort: 'default' };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -44,27 +49,54 @@
   const fmtDist = d => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1).replace('.', ',')} km`);
   const menuById = id => menu.find(m => m.id === id);
   const saveCart = () => store.set('ws_cart', cart);
+  const saveFav = () => store.set('ws_fav', fav);
+
+  // Menjaga fokus keyboard saat elemen dirender ulang
+  function keepFocus(fn) {
+    const a = document.activeElement;
+    let sel = null;
+    if (a && a.dataset) {
+      for (const k of ['add', 'dec', 'fav']) {
+        if (k in a.dataset) {
+          const box = a.closest('.dish, .inv-item');
+          if (box) sel = { box: box.classList.contains('dish') ? '.dish' : '.inv-item', id: a.dataset[k], k };
+        }
+      }
+    }
+    fn();
+    if (sel) {
+      const box = document.querySelector(`${sel.box}[data-id="${CSS.escape(sel.id)}"]`);
+      const el = box && (box.querySelector(`[data-${sel.k}]`) || box.querySelector('[data-add]'));
+      if (el) el.focus();
+    }
+  }
 
   // ---------- Config ----------
   function renderConfig() {
     document.title = `${config.name} — Pesan dari meja`;
     $('#brand-name').textContent = config.name;
     $('#foot-name').textContent = `${config.name} © ${new Date().getFullYear()}`;
-    if (config.tagline) $('#tagline').textContent = config.tagline;
+    if (config.tagline) $('#banner-tagline').textContent = config.tagline;
+    $('#banner-open').textContent = config.open ? 'Buka' : 'Tutup';
+    $('#banner-open').dataset.open = config.open ? '1' : '0';
+    $('#banner-hours').textContent = config.hours || '—';
     $('#info-address').textContent = config.address || '—';
     $('#info-hours').textContent = config.hours || '—';
     $('#info-radius').textContent = config.geofence
       ? `Pemesanan hanya untuk pengunjung dalam radius ${config.radius} m dari restoran.`
       : 'Pemesanan terbuka untuk semua pengunjung.';
-    $('#radar-limit-lbl').textContent = `radius ${config.radius} m`;
+    $('#radar-limit-lbl').textContent = config.geofence ? `Radius ${config.radius} m` : 'Tanpa batas';
     $('#map-link').href = `https://www.openstreetmap.org/?mlat=${config.lat}&mlon=${config.lng}#map=18/${config.lat}/${config.lng}`;
     $('#closed').hidden = config.open;
     if (!config.geofence) {
       $('#radar-msg').innerHTML = 'Tanpa batas lokasi<small>Restoran ini menerima pesanan dari mana saja.</small>';
+      $('#radar-check').hidden = true;
     }
+    const last = store.get('ws_last', null);
+    if (last) { const a = $('#nav-order'); a.href = '/bayar.html?o=' + encodeURIComponent(last); a.hidden = false; }
   }
 
-  // ---------- Radar ----------
+  // ---------- Radar lokasi ----------
   function bearing(lat1, lon1, lat2, lon2) {
     const r = Math.PI / 180;
     const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
@@ -76,24 +108,20 @@
     const box = $('#radar-status');
     if (busy) { box.dataset.state = 'busy'; $('#radar-msg').innerHTML = 'Mencari lokasimu…<small>Izinkan akses lokasi jika diminta browser.</small>'; return; }
     if (!loc) return;
-    const you = $('#you');
     if (loc.distance != null && loc.lat != null) {
       const R = 150;
       const rr = Math.min((loc.distance / config.radius) * R, 185);
       const b = bearing(config.lat, config.lng, loc.lat, loc.lng);
       const x = 200 + rr * Math.sin(b), y = 200 - rr * Math.cos(b);
       for (const id of ['#you-dot', '#you-halo']) { $(id).setAttribute('cx', x.toFixed(1)); $(id).setAttribute('cy', y.toFixed(1)); }
-      $('#you-dot').setAttribute('fill', loc.ok ? '#b7cfa0' : '#f0c3cd');
-      $('#you-halo').setAttribute('fill', loc.ok ? 'rgba(183,207,160,.35)' : 'rgba(240,195,205,.35)');
-      you.hidden = false;
+      $('#you-dot').setAttribute('fill', loc.ok ? '#eee8df' : '#e8a79b');
+      $('#you-halo').setAttribute('fill', loc.ok ? 'rgba(238,232,223,.3)' : 'rgba(232,167,155,.3)');
+      $('#you').hidden = false;
     }
     box.dataset.state = loc.ok ? 'ok' : 'bad';
-    const msg = $('#radar-msg');
-    if (loc.ok) {
-      msg.innerHTML = `${loc.distance != null ? `Kamu ${esc(fmtDist(loc.distance))} dari restoran` : 'Lokasi diterima'}<small>Kamu berada di dalam jangkauan. Silakan pesan.</small>`;
-    } else {
-      msg.innerHTML = `${esc(loc.message || 'Di luar jangkauan')}<small>Datang ke restoran lalu cek lokasi lagi.</small>`;
-    }
+    $('#radar-msg').innerHTML = loc.ok
+      ? `${loc.distance != null ? `Kamu ${esc(fmtDist(loc.distance))} dari restoran` : 'Lokasi diterima'}<small>Kamu berada di dalam jangkauan. Silakan pesan.</small>`
+      : `${esc(loc.message || 'Di luar jangkauan')}<small>Datang ke restoran lalu cek lokasi lagi.</small>`;
   }
 
   function getPosition() {
@@ -132,48 +160,70 @@
   }
 
   // ---------- Menu ----------
-  function renderTabs() {
-    $('#tabs').innerHTML = CATS
-      .filter(c => menu.some(m => m.category === c.id))
-      .map((c, i) => `<a class="tab" href="#cat-${c.id}" data-cat="${c.id}" ${i === 0 ? 'aria-current="true"' : ''}>${c.label}</a>`)
-      .join('');
+  function renderCats() {
+    $('#cats').innerHTML = CATS
+      .filter(c => c.id === 'all' || menu.some(m => m.category === c.id))
+      .map(c => {
+        const n = c.id === 'all' ? menu.length : menu.filter(m => m.category === c.id).length;
+        return `<button type="button" class="cat" data-cat="${c.id}" aria-pressed="${view.cat === c.id}">
+          <span class="ico" aria-hidden="true">${c.icon}</span><span>${c.label}<small>${n} menu</small></span></button>`;
+      }).join('');
   }
 
-  function itemControl(m) {
+  function visibleMenu() {
+    const q = view.q.trim().toLowerCase();
+    let list = menu.filter(m =>
+      (view.cat === 'all' || m.category === view.cat) &&
+      (view.tab === 'all' || fav.includes(m.id)) &&
+      (!q || m.name.toLowerCase().includes(q) || (m.desc || '').toLowerCase().includes(q)));
+    if (view.sort === 'price-asc') list = [...list].sort((a, b) => a.price - b.price);
+    else if (view.sort === 'price-desc') list = [...list].sort((a, b) => b.price - a.price);
+    else if (view.sort === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    return list;
+  }
+
+  const heart = on => `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7C19.5 15.9 12 20.5 12 20.5z"/></svg>`;
+  const pic = m => (m.imageUrl && /^https?:\/\//i.test(m.imageUrl)) ? `<img src="${esc(m.imageUrl)}" alt="" loading="lazy">` : esc(m.emoji || '🍽️');
+
+  function dishControl(m, q) {
     if (!m.available) return '<span class="soldout-tag">Habis</span>';
-    const q = (cart[m.id] && cart[m.id].qty) || 0;
-    if (!q) return `<button class="add-btn" type="button" data-add="${esc(m.id)}" aria-label="Tambah ${esc(m.name)}">+</button>`;
+    if (!q) return `<button class="btn-main" type="button" data-add="${esc(m.id)}" aria-label="Tambah ${esc(m.name)}">Tambah</button>`;
     return `<div class="stepper"><button type="button" data-dec="${esc(m.id)}" aria-label="Kurangi ${esc(m.name)}">−</button><span aria-live="polite">${q}</span><button type="button" data-add="${esc(m.id)}" aria-label="Tambah ${esc(m.name)}">+</button></div>`;
+  }
+
+  function dishHTML(m) {
+    const q = (cart[m.id] && cart[m.id].qty) || 0;
+    const isFav = fav.includes(m.id);
+    return `<article class="dish${q ? ' selected' : ''}${m.available ? '' : ' soldout'}" data-id="${esc(m.id)}">
+      <div class="dish-img" data-cat="${esc(m.category)}">${pic(m)}<span class="tick" aria-hidden="true">${q ? '✓' : ''}</span></div>
+      <h3 class="dish-name">${esc(m.name)}</h3>
+      <p class="dish-desc">${esc(m.desc || '')}</p>
+      <div class="dish-price">${rp(m.price)}</div>
+      <div class="dish-act">
+        <button class="btn-soft" type="button" data-fav="${esc(m.id)}" aria-pressed="${isFav}" aria-label="${isFav ? 'Hapus' : 'Tambahkan'} ${esc(m.name)} ${isFav ? 'dari' : 'ke'} favorit">${heart(isFav)}<span class="t">Favorit</span></button>
+        ${dishControl(m, q)}
+      </div>
+    </article>`;
   }
 
   function renderMenu() {
     const root = $('#menu-root');
-    if (!menu.length) { root.innerHTML = '<p class="muted" style="padding:48px 0">Menu belum tersedia.</p>'; return; }
-    root.innerHTML = CATS.map(c => {
-      const items = menu.filter(m => m.category === c.id);
-      if (!items.length) return '';
-      return `<section class="menu-group" id="cat-${c.id}">
-        <h3><span class="flower" aria-hidden="true"></span>${c.label}</h3>
-        <div class="menu-grid">${items.map(m => {
-          const disk = m.imageUrl && /^https?:\/\//i.test(m.imageUrl)
-            ? `<img src="${esc(m.imageUrl)}" alt="" loading="lazy">` : esc(m.emoji || '🍽️');
-          return `<div class="mi${m.available ? '' : ' soldout'}" data-cat="${c.id}" data-id="${esc(m.id)}">
-            <div class="disk" aria-hidden="true">${disk}</div>
-            <div>
-              <div class="mi-head"><span class="mi-name">${esc(m.name)}</span><span class="mi-dots" aria-hidden="true"></span><span class="mi-price">${rp(m.price)}</span></div>
-              <p class="mi-desc">${esc(m.desc || '')}</p>
-            </div>
-            <div class="mi-side" data-ctl>${itemControl(m)}</div>
-          </div>`;
-        }).join('')}</div>
-      </section>`;
-    }).join('');
+    const list = visibleMenu();
+    if (!list.length) {
+      const msg = view.q ? [`Menu tidak ditemukan`, `Tidak ada hasil untuk “${esc(view.q)}”. Coba kata lain.`]
+        : view.tab === 'fav' ? ['Belum ada favorit', 'Tekan tombol Favorit pada menu yang kamu suka.']
+          : ['Menu belum tersedia', 'Pemilik restoran belum menambahkan menu di kategori ini.'];
+      root.innerHTML = `<div class="cards-empty"><strong>${msg[0]}</strong>${msg[1]}</div>`;
+    } else {
+      root.innerHTML = list.map(dishHTML).join('');
+    }
+    $('#fav-count').textContent = fav.length ? `(${fav.length})` : '';
   }
 
-  function refreshControl(id) {
-    const row = document.querySelector(`.mi[data-id="${CSS.escape(id)}"] [data-ctl]`);
+  function refreshDish(id) {
+    const card = document.querySelector(`.dish[data-id="${CSS.escape(id)}"]`);
     const m = menuById(id);
-    if (row && m) row.innerHTML = itemControl(m);
+    if (card && m) card.outerHTML = dishHTML(m);
   }
 
   function setQty(id, qty) {
@@ -183,11 +233,16 @@
     if (qty === 0) delete cart[id];
     else cart[id] = { qty, note: (cart[id] && cart[id].note) || '' };
     saveCart();
-    refreshControl(id);
-    renderCart();
+    keepFocus(() => { refreshDish(id); renderCart(); });
   }
 
-  // ---------- Keranjang ----------
+  function toggleFav(id) {
+    fav = fav.includes(id) ? fav.filter(x => x !== id) : [...fav, id];
+    saveFav();
+    keepFocus(() => { if (view.tab === 'fav') renderMenu(); else { refreshDish(id); $('#fav-count').textContent = fav.length ? `(${fav.length})` : ''; } });
+  }
+
+  // ---------- Panel pesanan ----------
   function cartLines() {
     return Object.entries(cart).map(([id, v]) => ({ m: menuById(id), ...v })).filter(l => l.m && l.m.available && l.qty > 0);
   }
@@ -202,57 +257,65 @@
   function renderCart() {
     const lines = cartLines();
     const t = totals();
+    const has = lines.length > 0;
     $('#cart-count').textContent = t.count;
-    const items = $('#cart-items');
-    const hasItems = lines.length > 0;
-    $('#cart-form').hidden = !hasItems;
-    $('#cart-foot').hidden = !hasItems;
+    $('#cart-form').hidden = !has;
+    $('#cart-foot').hidden = !has;
+    $('#mobile-bar').hidden = !has;
+    $('#mb-count').textContent = t.count;
+    $('#mb-total').textContent = rp(t.total);
 
-    if (!hasItems) {
-      items.innerHTML = '<div class="empty"><strong>Keranjang masih kosong</strong>Pilih menu lalu tekan tombol + untuk menambahkannya.</div>';
+    const items = $('#cart-items');
+    if (!has) {
+      items.innerHTML = '<div class="inv-empty"><strong>Pesanan masih kosong</strong>Pilih menu lalu tekan Tambah.</div>';
       return;
     }
-    // Jangan render ulang input catatan saat user mengetik.
     items.innerHTML = lines.map(l => `
-      <div class="ci" data-id="${esc(l.m.id)}">
-        <div class="ci-top"><span>${esc(l.m.name)}</span><span>${rp(l.m.price * l.qty)}</span></div>
-        <div class="ci-row">
-          <div class="stepper"><button type="button" data-dec="${esc(l.m.id)}" aria-label="Kurangi ${esc(l.m.name)}">−</button><span>${l.qty}</span><button type="button" data-add="${esc(l.m.id)}" aria-label="Tambah ${esc(l.m.name)}">+</button></div>
-          <input type="text" maxlength="100" placeholder="Catatan, mis. tanpa pedas" value="${esc(l.note || '')}" data-note="${esc(l.m.id)}" aria-label="Catatan untuk ${esc(l.m.name)}">
-        </div>
+      <div class="inv-item" data-id="${esc(l.m.id)}">
+        <div class="thumb" data-cat="${esc(l.m.category)}" aria-hidden="true">${pic(l.m)}</div>
+        <div class="inv-info"><b>${esc(l.m.name)}</b><span>${rp(l.m.price * l.qty)}</span></div>
+        <div class="stepper"><button type="button" data-dec="${esc(l.m.id)}" aria-label="Kurangi ${esc(l.m.name)}">−</button><span>${l.qty}</span><button type="button" data-add="${esc(l.m.id)}" aria-label="Tambah ${esc(l.m.name)}">+</button></div>
+        <input class="note" type="text" maxlength="100" placeholder="Catatan, mis. tanpa pedas" value="${esc(l.note || '')}" data-note="${esc(l.m.id)}" aria-label="Catatan untuk ${esc(l.m.name)}">
       </div>`).join('');
 
-    $('#totals').innerHTML = `
-      <div><span>Subtotal</span><span>${rp(t.subtotal)}</span></div>
-      ${config.taxPercent > 0 ? `<div><span>Pajak ${esc(config.taxPercent)}%</span><span>${rp(t.tax)}</span></div>` : ''}
-      <div class="grand"><span>Total</span><span>${rp(t.total)}</span></div>`;
-    $('#pay-btn').textContent = `Bayar ${rp(t.total)}`;
+    $('#sum-sub').textContent = rp(t.subtotal);
+    $('#sum-tax-row').hidden = !(config.taxPercent > 0);
+    $('#sum-tax-lbl').textContent = `Pajak ${config.taxPercent}%`;
+    $('#sum-tax').textContent = rp(t.tax);
+    $('#sum-total').textContent = rp(t.total);
+    $('#pay-btn').textContent = `Pesan sekarang · ${rp(t.total)}`;
   }
 
+  // Di layar kecil panel pesanan berupa laci geser
   function openCart() {
-    $('#drawer').classList.add('on'); $('#scrim').classList.add('on');
-    $('#drawer').setAttribute('aria-hidden', 'false');
+    const inv = $('#invoice');
+    inv.classList.add('on'); $('#scrim').classList.add('on');
+    inv.setAttribute('role', 'dialog'); inv.setAttribute('aria-modal', 'true'); inv.setAttribute('aria-labelledby', 'inv-title');
     document.body.style.overflow = 'hidden';
     setTimeout(() => $('#close-cart').focus(), 50);
   }
-  function closeCart() {
-    $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on');
-    $('#drawer').setAttribute('aria-hidden', 'true');
+  function closeCart(restoreFocus = true) {
+    const inv = $('#invoice');
+    const wasOpen = inv.classList.contains('on');
+    inv.classList.remove('on'); $('#scrim').classList.remove('on');
+    inv.removeAttribute('role'); inv.removeAttribute('aria-modal'); inv.removeAttribute('aria-labelledby');
     document.body.style.overflow = '';
-    $('#open-cart').focus();
+    if (wasOpen && restoreFocus) ($('#open-cart').offsetParent ? $('#open-cart') : $('#mobile-bar')).focus();
   }
+  function syncInvoiceHidden() { $('#invoice').setAttribute('aria-hidden', mq.matches && !$('#invoice').classList.contains('on') ? 'true' : 'false'); }
 
   function setGeoNotice(text, kind) {
     const n = $('#geo-notice');
     n.className = 'notice ' + kind;
     n.textContent = text;
+    n.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   async function checkout(e) {
     e.preventDefault();
     if (busy) return;
     const lines = cartLines();
-    if (!lines.length) return toast('Keranjang masih kosong.', 'bad');
+    if (!lines.length) return toast('Pesanan masih kosong.', 'bad');
     if (!config.open) return toast('Restoran sedang tutup.', 'bad');
     const name = $('#f-name').value.trim();
     if (!name) { $('#f-name').focus(); return setGeoNotice('Isi nama pemesan dulu.', 'bad'); }
@@ -279,50 +342,62 @@
       });
       cart = {}; saveCart();
       store.set('ws_name', { name, phone: $('#f-phone').value.trim(), table: $('#f-table').value.trim() });
-      location_href('/bayar.html?o=' + encodeURIComponent(order.id));
+      store.set('ws_last', order.id);
+      window.location.href = '/bayar.html?o=' + encodeURIComponent(order.id);
     } catch (err) {
       setGeoNotice(err.message, 'bad');
     } finally {
       btn.disabled = false;
     }
   }
-  const location_href = url => { window.location.href = url; };
 
   // ---------- Events ----------
   document.addEventListener('click', e => {
     const add = e.target.closest('[data-add]');
     const dec = e.target.closest('[data-dec]');
+    const fv = e.target.closest('[data-fav]');
     if (add) { const id = add.dataset.add; setQty(id, ((cart[id] && cart[id].qty) || 0) + 1); }
     else if (dec) { const id = dec.dataset.dec; setQty(id, ((cart[id] && cart[id].qty) || 0) - 1); }
+    else if (fv) toggleFav(fv.dataset.fav);
+
+    const cat = e.target.closest('.cat');
+    if (cat) { view.cat = cat.dataset.cat; renderCats(); renderMenu(); $(`.cat[data-cat="${view.cat}"]`).focus(); }
+    const tab = e.target.closest('.tabs2 [data-tab]');
+    if (tab) {
+      view.tab = tab.dataset.tab;
+      $$('.tabs2 [data-tab]').forEach(b => b.setAttribute('aria-selected', b === tab ? 'true' : 'false'));
+      renderMenu();
+    }
   });
   document.addEventListener('input', e => {
     const n = e.target.closest('[data-note]');
     if (n && cart[n.dataset.note]) { cart[n.dataset.note].note = n.value.slice(0, 100); saveCart(); }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#drawer').classList.contains('on')) closeCart(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#invoice').classList.contains('on')) closeCart(); });
 
+  $('#q').addEventListener('input', e => { view.q = e.target.value; renderMenu(); });
+  $('#sort').addEventListener('change', e => { view.sort = e.target.value; renderMenu(); });
   $('#open-cart').addEventListener('click', openCart);
-  $('#close-cart').addEventListener('click', closeCart);
-  $('#scrim').addEventListener('click', closeCart);
+  $('#mobile-bar').addEventListener('click', openCart);
+  $('#close-cart').addEventListener('click', () => closeCart());
+  $('#scrim').addEventListener('click', () => closeCart());
   $('#checkout').addEventListener('submit', checkout);
   $('#radar-check').addEventListener('click', checkFromButton);
-  $('#hero-check').addEventListener('click', () => { $('#radar-check').scrollIntoView({ behavior: 'smooth', block: 'center' }); checkFromButton(); });
+  mq.addEventListener('change', () => { closeCart(false); syncInvoiceHidden(); });
 
-  // Tab kategori mengikuti posisi scroll
-  function watchTabs() {
-    const secs = [...document.querySelectorAll('.menu-group')];
-    if (!('IntersectionObserver' in window) || !secs.length) return;
+  // Penanda navigasi mengikuti bagian yang sedang dilihat
+  function watchSections() {
+    if (!('IntersectionObserver' in window)) return;
     const io = new IntersectionObserver(entries => {
       entries.forEach(en => {
         if (!en.isIntersecting) return;
-        const cat = en.target.id.replace('cat-', '');
-        document.querySelectorAll('.tab').forEach(t => {
-          if (t.dataset.cat === cat) t.setAttribute('aria-current', 'true');
-          else t.removeAttribute('aria-current');
+        $$('.side-nav a[href^="#"]').forEach(a => {
+          if (a.getAttribute('href') === '#' + en.target.id) a.setAttribute('aria-current', 'true');
+          else a.removeAttribute('aria-current');
         });
       });
-    }, { rootMargin: '-40% 0px -55% 0px' });
-    secs.forEach(s => io.observe(s));
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    ['menu', 'cara', 'info'].forEach(id => { const s = document.getElementById(id); if (s) io.observe(s); });
   }
 
   // ---------- Mulai ----------
@@ -330,14 +405,14 @@
     try {
       [config, menu] = await Promise.all([api('/api/config'), api('/api/menu')]);
     } catch (e) {
-      $('#menu-root').innerHTML = '<p class="notice bad" style="margin:48px 0">Menu gagal dimuat. Muat ulang halaman.</p>';
+      $('#menu-root').innerHTML = '<div class="cards-empty"><strong>Menu gagal dimuat</strong>Muat ulang halaman.</div>';
       return;
     }
-    // Bersihkan keranjang dari menu yang sudah dihapus / habis
     for (const id of Object.keys(cart)) { const m = menuById(id); if (!m || !m.available) delete cart[id]; }
-    saveCart();
+    fav = fav.filter(id => menuById(id));
+    saveCart(); saveFav();
     const prev = store.get('ws_name', null);
     if (prev) { $('#f-name').value = prev.name || ''; $('#f-phone').value = prev.phone || ''; $('#f-table').value = prev.table || ''; }
-    renderConfig(); renderTabs(); renderMenu(); renderCart(); watchTabs();
+    renderConfig(); renderCats(); renderMenu(); renderCart(); watchSections(); syncInvoiceHidden();
   })();
 })();

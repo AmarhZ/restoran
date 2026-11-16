@@ -62,7 +62,8 @@ Catatan penting:
 ```
 server.js            API, Midtrans, geofence, auth admin
 lib/db.js            penyimpanan JSON (data/db.json), mudah diganti ke database SQL
-public/index.html    landing page + menu + keranjang
+public/index.html    landing page + menu + panel pesanan (layout dashboard)
+public/css/          site.css (dasar & halaman bayar), shell.css (layout dashboard)
 public/bayar.html    halaman pembayaran + status pesanan
 public/admin/        panel admin (pesanan, menu, pengaturan lokasi)
 ```

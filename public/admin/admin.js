@@ -282,7 +282,7 @@
     map = L.map('map').setView([lat, lng], 17);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-    circle = L.circle([lat, lng], { radius: Number($('#s-radius').value) || settings.radius, color: '#8c1c3a', fillColor: '#b7cfa0', fillOpacity: 0.18, weight: 2 }).addTo(map);
+    circle = L.circle([lat, lng], { radius: Number($('#s-radius').value) || settings.radius, color: '#2c365a', fillColor: '#c4bcb0', fillOpacity: 0.18, weight: 2 }).addTo(map);
     const setPoint = ll => { marker.setLatLng(ll); circle.setLatLng(ll); $('#s-lat').value = ll.lat.toFixed(6); $('#s-lng').value = ll.lng.toFixed(6); };
     marker.on('dragend', () => setPoint(marker.getLatLng()));
     map.on('click', e => setPoint(e.latlng));
