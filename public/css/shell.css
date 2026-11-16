@@ -180,7 +180,10 @@
   .loc .btn { margin-top: 6px; }
   .admin-link { display: none; }
   .main { padding: 16px 16px 96px; }
-  .cats { grid-template-columns: repeat(2, 1fr); }
+  .cats { display: flex; overflow-x: auto; scroll-snap-type: x proximity; gap: 10px; margin-inline: -16px; padding: 2px 16px 6px; scrollbar-width: none; }
+  .cats::-webkit-scrollbar { display: none; }
+  .cat { flex: none; scroll-snap-align: start; }
+  .topbar { position: sticky; top: 0; z-index: 20; background: var(--cream); margin-inline: -16px; padding: 10px 16px; }
   .banner { padding: 22px 20px; }
   .steps { grid-template-columns: 1fr; gap: 20px; }
   .step { padding-right: 0; }
@@ -199,4 +202,84 @@
   .filter-btn { padding: 0 12px; }
   .filter-btn select { width: 78px; }
   .field-row { grid-template-columns: 1fr; }
+}
+
+/* ---------- Animasi ringan ---------- */
+.cats { min-height: 56px; }
+.banner { animation: rise .5s cubic-bezier(.2, .7, .2, 1) backwards; }
+.loc { animation: fade .6s ease .15s backwards; }
+.cat { animation: rise .4s ease backwards; animation-delay: calc(var(--i, 0) * 50ms + 120ms); transition: border-color .15s, background .15s, transform .1s; }
+.cat:active, .btn-main:active, .btn-soft:active, .stepper button:active, .side-nav a:active, .add:active { transform: scale(.96); }
+.btn-main, .btn-soft { transition: background .15s, transform .1s; }
+.dish.in { animation: rise .42s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 45ms + 60ms); }
+.dish.pop .tick { animation: pop .32s ease; }
+.tick { transition: background .15s, border-color .15s; }
+.inv-item.new { animation: rise .3s ease backwards; }
+.cards-empty, .inv-empty { animation: fade .3s ease; }
+.mobile-bar:not([hidden]) { animation: slide-up .3s ease; }
+.emo { display: inline-block; transition: transform .25s ease; }
+
+/* Skeleton: kartu kerangka selagi menu dimuat (hanya opacity) */
+.skel { pointer-events: none; min-height: 300px; animation: pulse-op 1.3s ease-in-out infinite; }
+.skel i { display: block; border-radius: 8px; background: var(--beige-soft); }
+.skel .l1 { height: 16px; width: 70%; margin: 12px 0 8px; }
+.skel .l2 { height: 12px; width: 95%; margin-bottom: 6px; }
+.skel .l3 { height: 12px; width: 60%; margin-bottom: 14px; }
+.skel .b { height: 40px; border-radius: 10px; margin-top: auto; }
+
+/* Bagian bawah layar: muncul sekali saat digulir; melewati render sampai dekat layar */
+.card { content-visibility: auto; contain-intrinsic-size: auto 360px; }
+.rv { opacity: 0; transform: translateY(16px); transition: opacity .5s ease, transform .5s ease; }
+.rv.on { opacity: 1; transform: none; }
+
+@media (hover: hover) {
+  .dish { transition: transform .18s ease, border-color .15s; }
+  .dish:hover { transform: translateY(-3px); }
+  .dish:hover .emo { transform: scale(1.12) rotate(-3deg); }
+}
+
+/* ---------- Responsif tambahan ---------- */
+@supports (height: 100dvh) {
+  @media (min-width: 820px) { .side { height: 100dvh; } }
+  @media (min-width: 1100px) { .invoice { height: 100dvh; } }
+}
+@media (min-width: 1500px) {
+  .shell { grid-template-columns: 270px minmax(0, 1fr) 380px; }
+  .main { padding: 28px 40px 72px; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .banner { padding: 34px 38px; }
+}
+@media (min-width: 820px) and (max-width: 1099px) {
+  .shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .side { padding: 20px 14px; }
+}
+@media (max-width: 819px) {
+  .main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .side { padding-top: calc(14px + env(safe-area-inset-top)); }
+}
+@media (max-width: 1099px) {
+  .mobile-bar { bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .inv-foot { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 360px) {
+  .banner h1 { font-size: 2.1rem; }
+  .cards { gap: 8px; }
+  .dish-name { font-size: .92rem; }
+  .dish-price { font-size: 1rem; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .invoice { width: min(380px, 100%); }
+  .loc svg { max-width: 120px; }
+}
+@media (pointer: coarse) {
+  .stepper button, .dish .stepper button { width: 40px; height: 40px; }
+  .btn-soft, .btn-main, .soldout-tag, .dish .stepper { height: 44px; }
+  .cat { padding-block: 10px; }
+  .side-nav a { padding-block: 12px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .note { padding-block: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+  .dish:hover, .dish:hover .emo { transform: none; }
 }

@@ -7,7 +7,7 @@
   const id = new URLSearchParams(location.search).get('o');
   const root = $('#root');
 
-  let config, order, pollTimer, tickTimer;
+  let config, order, pollTimer, tickTimer, lastMain = '';
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { method: opts.method || 'GET' });
@@ -52,7 +52,7 @@
     return `<div class="panel hot">
       <h1>${claimed ? 'Menunggu konfirmasi kasir' : 'Bayar dengan QRIS'}</h1>
       ${claimed
-        ? '<p class="muted" style="margin:0">Kasir sedang memeriksa pembayaranmu. Halaman ini berubah sendiri setelah pembayaran dikonfirmasi.</p>'
+        ? '<p class="muted" style="margin:0">Kasir sedang memeriksa pembayaranmu. Halaman ini berubah sendiri setelah pembayaran dikonfirmasi.</p><p class="waiting"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>Menunggu kasir memeriksa</p>'
         : '<p class="muted" style="margin:0">Selesaikan dalam <span class="countdown" id="cd">--:--</span>, lalu tekan tombol <strong>Saya sudah bayar</strong>.</p>'}
       <div class="big-total">${rp(o.total)}</div>
       <p class="muted" style="margin:4px 0 0">Masukkan nominal tepat seperti di atas.</p>
@@ -83,6 +83,7 @@
       completed: ['Pesanan selesai', 'Terima kasih sudah makan di sini. Sampai jumpa lagi.']
     }[o.status];
     return `<div class="panel hot">
+      ${['paid', 'completed'].includes(o.status) ? '<svg class="check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23"/><path d="M15 27l8 8 14-16"/></svg>' : ''}
       <h1 class="state-title">${labels[0]}</h1>
       <p class="muted" style="margin:0">${labels[1]}</p>
       ${track(o.status)}
@@ -109,9 +110,12 @@
     // Panel yang sama tidak digambar ulang (gambar QRIS tidak berkedip)
     if (root.dataset.key !== key) {
       root.dataset.key = key;
+      lastMain = main;
       root.innerHTML = `<div class="pay-grid"><div id="main">${main}</div><div>${summary(order)}</div></div>`;
       if (pending) bindPending();
-    } else if (!pending) {
+    } else if (!pending && main !== lastMain) {
+      // hanya digambar ulang jika isinya berubah (animasi tidak berulang tiap polling)
+      lastMain = main;
       $('#main').innerHTML = main;
     }
   }
