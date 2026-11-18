@@ -7,7 +7,7 @@
   <meta name="description" content="Pesan makanan, minuman, dan snack langsung dari ponselmu. Bayar dengan QRIS.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/site.css">
   <link rel="stylesheet" href="/css/shell.css">
 </head>
@@ -27,30 +27,18 @@
 
       <section class="loc" aria-label="Lokasi kamu">
         <div class="loc-head"><span class="loc-title">Lokasi kamu</span><span id="radar-limit-lbl">Radius 300 m</span></div>
-        <svg viewBox="0 0 400 400" role="img" aria-labelledby="radar-title">
-          <title id="radar-title">Peta jarak: restoran di tengah, lingkaran putus-putus adalah batas pemesanan</title>
-          <circle class="ring" cx="200" cy="200" r="190"/>
-          <circle class="ring" cx="200" cy="200" r="100"/>
-          <circle class="limit" cx="200" cy="200" r="150"/>
-          <circle class="pulse" cx="200" cy="200" r="150"/>
-          <g aria-hidden="true">
-            <circle cx="200" cy="200" r="34" fill="#eee8df"/>
-            <circle cx="200" cy="200" r="25" fill="none" stroke="#2c365a" stroke-width="3"/>
-            <circle cx="200" cy="200" r="12" fill="#2c365a"/>
-          </g>
-          <g id="you" hidden>
-            <circle class="you" id="you-halo" cx="200" cy="200" r="18" fill="rgba(238,232,223,.3)"/>
-            <circle class="you" id="you-dot" cx="200" cy="200" r="9" fill="#eee8df" stroke="#2c365a" stroke-width="3.5"/>
-          </g>
-        </svg>
+        <div class="loc-bar" role="img" aria-label="Jarak kamu dari restoran dibanding batas pemesanan">
+          <span class="loc-home" aria-hidden="true"></span>
+          <span class="loc-you" id="you" hidden aria-hidden="true"></span>
+        </div>
+        <div class="loc-scale" aria-hidden="true"><span>Restoran</span><span>Batas pesan</span></div>
         <div class="radar-status" id="radar-status" data-state="idle" role="status" aria-live="polite">
           <span class="dot" aria-hidden="true"></span>
           <p id="radar-msg">Lokasi belum dicek<small>Pemesanan hanya untuk pengunjung di sekitar restoran.</small></p>
         </div>
-        <button class="btn block" id="radar-check" type="button">Cek lokasi saya</button>
+        <button class="btn alt block" id="radar-check" type="button">Cek lokasi saya</button>
       </section>
 
-      <a class="admin-link" href="/admin/">Masuk admin</a>
     </aside>
 
     <!-- Konten utama -->
@@ -88,7 +76,7 @@
       </section>
 
       <section id="menu" aria-label="Menu">
-        <h2 class="h-sec">Jelajahi kategori</h2>
+        <h2 class="h-sec">Mau makan apa?</h2>
         <div class="cats" id="cats"></div>
 
         <div class="tabs2" role="tablist" aria-label="Tampilan menu">
@@ -98,9 +86,11 @@
         <div class="cards" id="menu-root" aria-live="polite" aria-busy="true"><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article><article class="dish skel" aria-hidden="true"><div class="dish-img"></div><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="b"></i></article></div>
       </section>
 
-      <section class="card" id="cara">
-        <h2>Cara pesan</h2>
-        <p class="sub">Tiga langkah, tanpa antre di kasir.</p>
+      <section class="card sec-how" id="cara">
+        <div class="sec-head">
+          <h2>Cara pesan</h2>
+          <p class="sub">Tiga langkah, tanpa antre di kasir.</p>
+        </div>
         <div class="steps">
           <div class="step"><div class="step-no">1</div><h3>Cek lokasi</h3><p>Izinkan akses lokasi. Kami memastikan kamu berada di dalam radius restoran.</p></div>
           <div class="step"><div class="step-no">2</div><h3>Pilih menu</h3><p>Tambahkan makanan, minuman, dan snack ke pesanan. Tulis catatan jika perlu.</p></div>
@@ -108,7 +98,7 @@
         </div>
       </section>
 
-      <section class="card" id="info">
+      <section class="card sec-info" id="info">
         <div class="info-grid">
           <div>
             <h2>Datang ke warung</h2>

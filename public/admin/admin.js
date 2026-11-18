@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  const ART = '<svg class="art" viewBox="0 0 104 80" aria-hidden="true"><ellipse class="fill" cx="52" cy="70" rx="40" ry="5"/><path d="M20 44h64a32 28 0 0 1-64 0z"/><path d="M36 74h32"/><path class="soft" d="M40 34c-4-5 4-8 0-13M52 34c-4-5 4-8 0-13M64 34c-4-5 4-8 0-13"/></svg>';
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -132,7 +133,9 @@
     if (f.id === 'confirm') list = [...list].sort((a, b) => new Date(a.payment.claimedAt) - new Date(b.payment.claimedAt));
     const root = $('#orders-list');
     if (!list.length) {
-      root.innerHTML = '<div class="empty"><strong>Belum ada pesanan di sini</strong>Pesanan baru akan muncul otomatis.</div>';
+      root.innerHTML = orders.length
+        ? `<div class="empty">${ART}<strong>Tidak ada pesanan di tab ini</strong><p>Ada ${orders.length} pesanan di tab lain.</p><div class="empty-act"><button class="btn primary" type="button" data-f="all">Lihat semua pesanan</button></div></div>`
+        : `<div class="empty">${ART}<strong>Belum ada pesanan masuk</strong><p>Halaman ini memperbarui diri sendiri. Begitu pelanggan memesan, pesanannya muncul di sini dan kamu mendengar bunyi pemberitahuan.</p><div class="empty-act"><a class="btn primary" href="/" target="_blank" rel="noopener">Buka halaman pelanggan</a><button class="btn" type="button" data-go="settings">Cek pengaturan</button></div></div>`;
       return;
     }
     root.innerHTML = list.map(o => {
@@ -182,6 +185,15 @@
     pollTimer = setTimeout(loadOrders, 7000);
   }
 
+  // Tombol aksi di dalam empty state
+  document.addEventListener('click', e => {
+    const f = e.target.closest('#orders-list [data-f]');
+    if (f) { filter = f.dataset.f; renderOrders(); return; }
+    const g = e.target.closest('[data-go]');
+    if (!g) return;
+    if (g.dataset.go === 'settings') setTab('settings');
+    else if (g.dataset.go === 'add') openMenuDialog(null);
+  });
   $('#filters').addEventListener('click', e => {
     const b = e.target.closest('[data-f]');
     if (b) { filter = b.dataset.f; renderOrders(); }
@@ -216,7 +228,7 @@
         <td class="r">${rp(m.price)}</td>
         <td><label class="switch"><input type="checkbox" data-avail="${esc(m.id)}" ${m.available ? 'checked' : ''} aria-label="Tersedia: ${esc(m.name)}"><i></i></label></td>
         <td><div class="acts"><button class="btn small" data-edit="${esc(m.id)}">Ubah</button><button class="btn small danger" data-del="${esc(m.id)}">Hapus</button></div></td>
-      </tr>`).join('') : '<tr><td colspan="6"><div class="empty"><strong>Menu masih kosong</strong>Tekan "Tambah menu" untuk mulai.</div></td></tr>';
+      </tr>`).join('') : `<tr><td colspan="6"><div class="empty">${ART}<strong>Menu masih kosong</strong><p>Pelanggan belum bisa memesan apa pun.</p><div class="empty-act"><button class="btn primary" type="button" data-go="add">Tambah menu pertama</button></div></div></td></tr>`;
   }
   async function loadMenu() { menu = await API('/menu'); renderMenu(); }
 
