@@ -81,3 +81,10 @@ public/admin/        panel admin (pesanan, menu, QRIS, lokasi)
 - Ganti password kapan saja di Admin > Pengaturan > Akun admin. Sesi lama otomatis berakhir.
 - Lupa password? Hentikan server, hapus `data/admin.json`, jalankan lagi, lalu buat akun baru dengan kode setup yang baru.
 - Di hosting yang disk-nya sementara (data hilang saat deploy ulang), pakai Environment Variables `ADMIN_USER` / `ADMIN_PASSWORD` di dashboard hosting.
+
+## Hosting: pilih yang punya disk permanen
+
+Aplikasi ini menyimpan data (pesanan, menu, gambar QRIS, akun admin) sebagai file di folder `data/`.
+
+- **Cocok:** VPS, Railway/Render/Fly.io dengan *persistent volume*, atau komputer sendiri. Atur lokasi volume lewat environment variable `DATA_DIR` (misalnya `/data`).
+- **Kurang cocok:** hosting serverless (Vercel, Netlify Functions, dsb.). File system-nya read-only atau sementara, jadi pesanan dan menu bisa hilang kapan saja. Server tidak lagi crash di sana, tetapi data tidak permanen dan akan ada peringatan di log.

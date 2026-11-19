@@ -19,7 +19,7 @@ const auth = require('./lib/admin');
 
 const PORT = Number(process.env.PORT) || 3000;
 
-const DATA_DIR = path.join(__dirname, 'data');
+const { DATA_DIR, persistent } = require('./lib/paths');
 const PAY_WINDOW_MIN = 30; // batas waktu bayar jika pelanggan belum menekan "Saya sudah bayar"
 const MAX_QRIS_BYTES = 2 * 1024 * 1024;
 const QRIS_EXT = ['png', 'jpg', 'webp'];
@@ -456,6 +456,7 @@ app.listen(PORT, () => {
   console.log(`  Admin:      http://localhost:${PORT}/admin/`);
   console.log(`  Pembayaran: QRIS statis dengan konfirmasi kasir`);
   if (!db.settings.qrisImage) console.log('  ⚠  Gambar QRIS belum diunggah — buka Admin > Pengaturan > Pembayaran QRIS agar pelanggan bisa memesan.');
+  if (!persistent) console.log('  ⚠  Penyimpanan tidak permanen (disk read-only/sementara). Pesanan, menu, dan gambar QRIS bisa hilang saat restart. Gunakan hosting dengan volume persisten, atau set DATA_DIR.');
   if (auth.mode() === 'setup') {
     console.log('  ⚠  Akun admin belum dibuat. Buka /admin/ lalu masukkan kode setup berikut:');
     console.log(`        KODE SETUP: ${auth.setupCode}   (berlaku selama server ini menyala)`);
