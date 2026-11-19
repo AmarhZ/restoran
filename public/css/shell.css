@@ -221,7 +221,11 @@
   .side-nav::-webkit-scrollbar { display: none; }
   .side-nav a { white-space: nowrap; padding: 8px 14px; border-left: 0; border-radius: var(--r-pill); border: 1px solid var(--line); }
   .side-nav a[aria-current="true"] { border-color: var(--ocean); }
-  .loc { margin-top: 0; padding: 12px 4px 0; }
+  /* Lokasi di ponsel/tablet kecil: satu baris ringkas (status kiri, tombol kanan) */
+  .loc { margin-top: 0; padding: 12px 2px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 14px; }
+  .loc-head, .loc-bar, .loc-scale { display: none; }
+  .loc .radar-status { margin-top: 0; font-size: .86rem; }
+  .loc .btn { margin-top: 0; width: auto; white-space: nowrap; }
   .main { padding: 16px 16px 96px; }
   .cats { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin-inline: -16px; padding: 2px 16px 6px; scrollbar-width: none; }
   .cats::-webkit-scrollbar { display: none; }
@@ -247,7 +251,6 @@
   .btn-soft .t { display: none; }
   .filter-btn { padding: 0 12px; }
   .filter-btn select { width: 78px; }
-  .field-row { grid-template-columns: 1fr; }
   .step { grid-template-columns: 48px 1fr; column-gap: 12px; }
   .step-no { font-size: 2.8rem; }
 }
@@ -299,6 +302,8 @@
 }
 @media (min-width: 820px) and (max-width: 1099px) {
   .shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .side .brand { font-size: 1.6rem; }
+  .side .brand .mark { font-size: 1.25rem; }
   .side { padding: 20px 14px; }
 }
 @media (max-width: 819px) {
@@ -309,7 +314,8 @@
   .mobile-bar { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .inv-foot { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 }
-@media (max-width: 360px) {
+@media (max-width: 340px) {
+  .field-row { grid-template-columns: 1fr; }
   .banner h1 { font-size: 2.5rem; }
   .cards { gap: 8px; }
   .dish-name { font-size: .92rem; }

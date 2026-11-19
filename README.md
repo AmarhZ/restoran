@@ -7,12 +7,12 @@ pembatasan pemesanan **berdasarkan radius lokasi**, dan **panel admin**.
 
 ```bash
 npm install
-cp .env.example .env     # lalu isi ADMIN_PASSWORD
+# .env tidak wajib. Akun admin dibuat lewat halaman /admin/ (lihat bawah)
 npm start
 ```
 
 - Website: http://localhost:3000
-- Admin:   http://localhost:3000/admin/  (default `admin` / `admin123` — **ganti di `.env`**)
+- Admin:   http://localhost:3000/admin/  — pertama kali dibuka akan meminta **kode setup** yang tampil di terminal, lalu kamu memilih username dan password sendiri
 
 ## Langkah pertama (wajib)
 
@@ -67,8 +67,17 @@ public/admin/        panel admin (pesanan, menu, QRIS, lokasi)
 
 ## Sebelum online (produksi)
 
-- Ganti `ADMIN_PASSWORD` dan isi `SESSION_SECRET` di `.env`.
+- Akun admin disimpan sebagai hash di `data/admin.json`; pastikan `.gitignore` tetap memuat `.env` dan `data/` sebelum push ke GitHub. Jika hosting punya Environment Variables, kamu boleh mengisi `ADMIN_USER` dan `ADMIN_PASSWORD` di sana.
 - Jalankan di belakang HTTPS (Nginx/Caddy) dan gunakan proses manager (PM2/systemd).
 - Cadangkan folder `data/`. Untuk trafik tinggi, pindahkan ke PostgreSQL/MySQL.
 - Ingin pembayaran otomatis tanpa konfirmasi kasir? Perlu payment gateway (mis. Midtrans, Xendit)
   yang menghasilkan QRIS dinamis. Kode versi Midtrans ada di berkas zip versi sebelumnya.
+
+## Keamanan akun admin
+
+- **Jangan upload `.env` atau folder `data/` ke GitHub.** Keduanya sudah ada di `.gitignore`. Yang di-upload hanya `.env.example` (isinya kosong).
+- Password tidak pernah disimpan polos: hanya hash scrypt + salt di `data/admin.json`.
+- Akun pertama dibuat dengan kode setup sekali pakai yang hanya tampil di terminal server, jadi orang lain tidak bisa mengambil alih meski tahu alamat `/admin/`.
+- Ganti password kapan saja di Admin > Pengaturan > Akun admin. Sesi lama otomatis berakhir.
+- Lupa password? Hentikan server, hapus `data/admin.json`, jalankan lagi, lalu buat akun baru dengan kode setup yang baru.
+- Di hosting yang disk-nya sementara (data hilang saat deploy ulang), pakai Environment Variables `ADMIN_USER` / `ADMIN_PASSWORD` di dashboard hosting.

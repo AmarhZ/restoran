@@ -58,7 +58,13 @@
   }
 
   // ---------- Auth ----------
-  function showLogin() { $('#login-view').hidden = false; $('#app-view').hidden = true; clearTimeout(pollTimer); }
+  let authMode = 'file';
+  async function showLogin() {
+    $('#login-view').hidden = false; $('#app-view').hidden = true; clearTimeout(pollTimer);
+    try { authMode = (await (await fetch('/api/admin/status')).json()).mode; } catch { /* anggap sudah ada akun */ }
+    $('#setup-form').hidden = authMode !== 'setup';
+    $('#login-form').hidden = authMode === 'setup';
+  }
   function logout() { token = ''; sessionStorage.removeItem('ws_admin'); showLogin(); }
 
   $('#login-form').addEventListener('submit', async e => {
@@ -77,6 +83,42 @@
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
   });
   $('#logout').addEventListener('click', logout);
+
+  $('#setup-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = $('#setup-err'); err.hidden = true;
+    try {
+      if ($('#su-pass').value !== $('#su-pass2').value) throw new Error('Kedua password tidak sama.');
+      const res = await fetch('/api/admin/setup', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: $('#su-code').value, username: $('#su-user').value, password: $('#su-pass').value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Gagal membuat akun.');
+      token = data.token; sessionStorage.setItem('ws_admin', token);
+      $('#su-pass').value = $('#su-pass2').value = $('#su-code').value = '';
+      start();
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  });
+
+  $('#account-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const msg = $('#account-msg'); msg.hidden = true;
+    try {
+      const data = await API('/password', { method: 'POST', body: { current: $('#ac-cur').value, username: $('#ac-user').value, password: $('#ac-new').value } });
+      token = data.token; sessionStorage.setItem('ws_admin', token);
+      $('#ac-cur').value = $('#ac-new').value = '';
+      msg.className = 'notice ok'; msg.textContent = 'Password diganti. Sesi di perangkat lain berakhir.'; msg.hidden = false;
+    } catch (ex) { msg.className = 'notice bad'; msg.textContent = ex.message; msg.hidden = false; }
+  });
+
+  async function loadAccountMode() {
+    try { authMode = (await (await fetch('/api/admin/status')).json()).mode; } catch { return; }
+    if (authMode === 'env') {
+      $('#account-note').textContent = 'Akun ini diatur lewat environment variable di hosting (ADMIN_USER dan ADMIN_PASSWORD). Untuk mengganti, ubah nilainya di pengaturan hosting lalu jalankan ulang server.';
+      $('#account-fields').hidden = true;
+    }
+  }
 
   // ---------- Tab ----------
   function setTab(name) {
@@ -382,6 +424,7 @@
   async function start() {
     $('#login-view').hidden = true; $('#app-view').hidden = false;
     try {
+      loadAccountMode();
       settings = await API('/settings');
       fillSettings();
       await Promise.all([loadMenu(), loadOrders(true)]);

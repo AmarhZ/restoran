@@ -1,0 +1,7 @@
+# Rahasia & data lokal: JANGAN di-upload ke GitHub
+.env
+.env.*
+!.env.example
+data/
+node_modules/
+*.log

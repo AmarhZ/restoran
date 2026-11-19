@@ -15,11 +15,9 @@ try {
 
 const express = require('express');
 const db = require('./lib/db');
+const auth = require('./lib/admin');
 
 const PORT = Number(process.env.PORT) || 3000;
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const PAY_WINDOW_MIN = 30; // batas waktu bayar jika pelanggan belum menekan "Saya sudah bayar"
@@ -110,19 +108,19 @@ function expireIfNeeded(order) {
 // ---------- Auth admin ----------
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  const sig = crypto.createHmac('sha256', auth.secret()).update(body).digest('base64url');
   return `${body}.${sig}`;
 }
 function verifyToken(token) {
   if (typeof token !== 'string') return null;
   const [body, sig] = token.split('.');
   if (!body || !sig) return null;
-  const exp = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
+  const exp = crypto.createHmac('sha256', auth.secret()).update(body).digest('base64url');
   const a = Buffer.from(sig), b = Buffer.from(exp);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, 'base64url').toString());
-    return p.exp > Date.now() ? p : null;
+    return p.exp > Date.now() && p.v === auth.version() ? p : null;
   } catch { return null; }
 }
 function adminAuth(req, res, next) {
@@ -288,15 +286,34 @@ app.post('/api/orders/:id/claim', limiter(20, 60000), (req, res) => {
 });
 
 // ---------- Admin ----------
+app.get('/api/admin/status', (req, res) => res.json({ mode: auth.mode() }));
+
+const issue = () => sign({ u: auth.username(), v: auth.version(), exp: Date.now() + 12 * 3600 * 1000 });
+
 app.post('/api/admin/login', limiter(10, 10 * 60000), (req, res) => {
+  if (auth.mode() === 'setup') return res.status(409).json({ error: 'Akun admin belum dibuat.' });
   const { username, password } = req.body || {};
-  const ok = safeEqual(String(username || ''), ADMIN_USER) & safeEqual(String(password || ''), ADMIN_PASSWORD);
-  if (!ok) return res.status(401).json({ error: 'Username atau password salah.' });
-  res.json({ token: sign({ u: ADMIN_USER, exp: Date.now() + 12 * 3600 * 1000 }) });
+  if (!auth.verify(String(username || ''), String(password || ''))) return res.status(401).json({ error: 'Username atau password salah.' });
+  res.json({ token: issue() });
+});
+
+// Pembuatan akun pertama: butuh kode setup yang hanya tampil di terminal server
+app.post('/api/admin/setup', limiter(8, 10 * 60000), (req, res) => {
+  const { code, username, password } = req.body || {};
+  const err = auth.setup(code, String(username || '').trim(), password);
+  if (err) return res.status(400).json({ error: err });
+  res.json({ token: issue() });
 });
 
 const admin = express.Router();
 admin.use(adminAuth);
+
+admin.post('/password', limiter(8, 10 * 60000), (req, res) => {
+  const { current, username, password } = req.body || {};
+  const err = auth.change(String(current || ''), String(username || '').trim(), password);
+  if (err) return res.status(400).json({ error: err });
+  res.json({ token: issue() });
+});
 
 admin.get('/orders', (req, res) => {
   db.orders.filter(o => o.status === 'pending_payment').forEach(expireIfNeeded);
@@ -439,6 +456,9 @@ app.listen(PORT, () => {
   console.log(`  Admin:      http://localhost:${PORT}/admin/`);
   console.log(`  Pembayaran: QRIS statis dengan konfirmasi kasir`);
   if (!db.settings.qrisImage) console.log('  ⚠  Gambar QRIS belum diunggah — buka Admin > Pengaturan > Pembayaran QRIS agar pelanggan bisa memesan.');
-  if (!process.env.ADMIN_PASSWORD) console.log('  ⚠  ADMIN_PASSWORD belum diatur — memakai "admin123". Ganti di file .env sebelum online.');
+  if (auth.mode() === 'setup') {
+    console.log('  ⚠  Akun admin belum dibuat. Buka /admin/ lalu masukkan kode setup berikut:');
+    console.log(`        KODE SETUP: ${auth.setupCode}   (berlaku selama server ini menyala)`);
+  }
   console.log('');
 });

@@ -24,6 +24,17 @@
       <button class="btn primary block" type="submit" style="margin-top:16px">Masuk</button>
       <p class="muted" style="margin:16px 0 0;font-size:.85rem"><a href="/">← Kembali ke website</a></p>
     </form>
+
+    <form id="setup-form" class="login-card" hidden>
+      <h1><span class="mark" aria-hidden="true"></span> Buat akun admin</h1>
+      <p class="muted">Pertama kali dipakai. Masukkan kode setup yang tampil di terminal tempat server berjalan, lalu pilih username dan password.</p>
+      <label class="field"><span>Kode setup</span><input id="su-code" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      <label class="field"><span>Username</span><input id="su-user" autocomplete="username" minlength="3" maxlength="30" required></label>
+      <label class="field"><span>Password (minimal 8 karakter)</span><input id="su-pass" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="field"><span>Ulangi password</span><input id="su-pass2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div id="setup-err" class="notice bad" hidden role="alert"></div>
+      <button class="btn primary block" type="submit" style="margin-top:16px">Buat akun dan masuk</button>
+    </form>
   </main>
 
   <!-- App -->
@@ -119,6 +130,22 @@
           <div class="savebar">
             <div id="settings-msg" class="notice" hidden role="status"></div>
             <button class="btn primary" type="submit">Simpan pengaturan</button>
+          </div>
+        </form>
+
+        <form id="account-form" class="settings" style="margin-top:16px">
+          <div class="panel">
+            <h2>Akun admin</h2>
+            <p class="muted" id="account-note">Password disimpan sebagai hash di server, bukan di file .env atau GitHub. Setelah diganti, perangkat lain harus masuk lagi.</p>
+            <div id="account-fields">
+              <label class="field"><span>Password saat ini</span><input id="ac-cur" type="password" autocomplete="current-password" required></label>
+              <div class="grid2">
+                <label class="field"><span>Username</span><input id="ac-user" autocomplete="username" minlength="3" maxlength="30" required></label>
+                <label class="field"><span>Password baru (min. 8 karakter)</span><input id="ac-new" type="password" autocomplete="new-password" minlength="8" required></label>
+              </div>
+              <div id="account-msg" class="notice" hidden role="status"></div>
+              <div class="row-btns"><button class="btn primary" type="submit">Ganti password</button></div>
+            </div>
           </div>
         </form>
       </section>
