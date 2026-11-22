@@ -186,7 +186,7 @@ app.get('/api/config', (req, res) => {
     name: s.name, tagline: s.tagline, address: s.address, hours: s.hours,
     lat: s.lat, lng: s.lng, radius: s.radius, geofence: s.geofenceEnabled,
     open: s.open, taxPercent: s.taxPercent,
-    payment: { ready: !!s.qrisImage, merchant: s.qrisMerchant || '', version: s.qrisVersion || 0 }
+    payment: (() => { const q = qrisSource(); return { ready: !!q, merchant: q ? q.merchant : '', version: q ? q.version : 0 }; })()
   });
 });
 
@@ -194,12 +194,24 @@ app.get('/api/menu', (req, res) => {
   res.json(db.menu.map(({ id, category, name, desc, price, emoji, imageUrl, available }) => ({ id, category, name, desc, price, emoji, imageUrl, available })));
 });
 
+// QRIS yang dipakai: hasil unggahan admin; jika belum ada, QRIS bawaan project (assets/qris-default.png).
+// QRIS bawaan ikut ter-deploy bersama kode, jadi tetap ada walau disk hosting dikosongkan.
+const DEFAULT_QRIS = path.join(__dirname, 'assets', 'qris-default.png');
+const DEFAULT_MERCHANT = (() => { try { return String(JSON.parse(fs.readFileSync(path.join(__dirname, 'assets', 'qris-default.json'), 'utf8')).merchant || ''); } catch { return ''; } })();
+function qrisSource() {
+  const s = db.settings;
+  const m = /^qris\.(png|jpg|webp)$/.exec(s.qrisImage || '');
+  const up = m && path.join(DATA_DIR, m[0]);
+  if (up && fs.existsSync(up)) return { file: up, uploaded: true, merchant: s.qrisMerchant || '', version: s.qrisVersion || 0 };
+  if (fs.existsSync(DEFAULT_QRIS)) return { file: DEFAULT_QRIS, uploaded: false, merchant: s.qrisMerchant || DEFAULT_MERCHANT, version: 1 };
+  return null;
+}
+
 app.get('/api/qris', (req, res) => {
-  const m = /^qris\.(png|jpg|webp)$/.exec(db.settings.qrisImage || '');
-  const file = m && path.join(DATA_DIR, m[0]);
-  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Gambar QRIS belum diunggah.' });
+  const q = qrisSource();
+  if (!q) return res.status(404).json({ error: 'Gambar QRIS belum diunggah.' });
   res.set('Cache-Control', 'no-cache');
-  res.sendFile(file);
+  res.sendFile(q.file);
 });
 
 app.post('/api/location/check', limiter(40, 60000), (req, res) => {
@@ -209,7 +221,7 @@ app.post('/api/location/check', limiter(40, 60000), (req, res) => {
 app.post('/api/orders', limiter(10, 60000), (req, res) => {
   const s = db.settings;
   if (!s.open) return res.status(403).json({ error: 'Restoran sedang tutup. Pemesanan belum bisa dilakukan.' });
-  if (!s.qrisImage) return res.status(503).json({ error: 'Pembayaran QRIS belum diatur oleh restoran. Silakan hubungi kasir.' });
+  if (!qrisSource()) return res.status(503).json({ error: 'Pembayaran QRIS belum diatur oleh restoran. Silakan hubungi kasir.' });
 
   const body = req.body || {};
   const name = str(body.customer && body.customer.name, 60);
@@ -399,7 +411,10 @@ admin.delete('/qris', (req, res) => {
   res.json({ ok: true });
 });
 
-admin.get('/settings', (req, res) => res.json(db.settings));
+admin.get('/settings', (req, res) => {
+  const q = qrisSource();
+  res.json({ ...db.settings, qrisReady: !!q, qrisIsDefault: !!q && !q.uploaded, qrisDefaultMerchant: DEFAULT_MERCHANT });
+});
 admin.put('/settings', (req, res) => {
   const b = req.body || {};
   const s = db.settings;
@@ -455,7 +470,7 @@ app.listen(PORT, () => {
   console.log(`\n  ${db.settings.name} berjalan di http://localhost:${PORT}`);
   console.log(`  Admin:      http://localhost:${PORT}/admin/`);
   console.log(`  Pembayaran: QRIS statis dengan konfirmasi kasir`);
-  if (!db.settings.qrisImage) console.log('  ⚠  Gambar QRIS belum diunggah — buka Admin > Pengaturan > Pembayaran QRIS agar pelanggan bisa memesan.');
+  if (!qrisSource()) console.log('  ⚠  Gambar QRIS belum diunggah — buka Admin > Pengaturan > Pembayaran QRIS agar pelanggan bisa memesan.');
   if (!persistent) console.log('  ⚠  Penyimpanan tidak permanen (disk read-only/sementara). Pesanan, menu, dan gambar QRIS bisa hilang saat restart. Gunakan hosting dengan volume persisten, atau set DATA_DIR.');
   if (auth.mode() === 'setup') {
     console.log('  ⚠  Akun admin belum dibuat. Buka /admin/ lalu masukkan kode setup berikut:');

@@ -393,11 +393,13 @@
 
   // ---------- QRIS ----------
   function renderQris() {
-    const has = !!(settings && settings.qrisImage);
+    const has = !!(settings && settings.qrisReady);
+    const uploaded = !!(settings && settings.qrisImage && !settings.qrisIsDefault);
     $('#qris-prev').innerHTML = has
       ? `<img src="/api/qris?v=${encodeURIComponent(settings.qrisVersion)}" alt="Gambar QRIS saat ini">`
       : '<span>Belum ada gambar</span>';
-    $('#qris-del').hidden = !has;
+    $('#qris-del').hidden = !uploaded;
+    $('#qris-note').textContent = has && settings.qrisIsDefault ? `Memakai QRIS bawaan${settings.qrisDefaultMerchant ? ' (' + settings.qrisDefaultMerchant + ')' : ''}. Unggah gambar baru untuk menggantinya.` : '';
     $('#qris-btn-text').textContent = has ? 'Ganti gambar QRIS' : 'Unggah gambar QRIS';
     $('#qris-warn').hidden = has;
   }
@@ -409,13 +411,13 @@
     try {
       const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('Gagal membaca file.')); r.readAsDataURL(file); });
       const r = await API('/qris', { method: 'PUT', body: { image: dataUrl } });
-      settings.qrisImage = r.qrisImage; settings.qrisVersion = r.qrisVersion;
+      settings.qrisImage = r.qrisImage; settings.qrisVersion = r.qrisVersion; settings.qrisReady = true; settings.qrisIsDefault = false;
       renderQris(); toast('Gambar QRIS disimpan.');
     } catch (ex) { toast(ex.message, true); }
   });
   $('#qris-del').addEventListener('click', async () => {
     if (!confirm('Hapus gambar QRIS? Pelanggan tidak bisa memesan sampai gambar baru diunggah.')) return;
-    try { await API('/qris', { method: 'DELETE' }); settings.qrisImage = ''; renderQris(); toast('Gambar QRIS dihapus.'); }
+    try { await API('/qris', { method: 'DELETE' }); settings = await API('/settings'); renderQris(); toast('Gambar unggahan dihapus. QRIS bawaan dipakai kembali.'); }
     catch (ex) { toast(ex.message, true); }
   });
   $('#go-settings').addEventListener('click', () => setTab('settings'));
