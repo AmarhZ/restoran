@@ -88,3 +88,9 @@ Aplikasi ini menyimpan data (pesanan, menu, gambar QRIS, akun admin) sebagai fil
 
 - **Cocok:** VPS, Railway/Render/Fly.io dengan *persistent volume*, atau komputer sendiri. Atur lokasi volume lewat environment variable `DATA_DIR` (misalnya `/data`).
 - **Kurang cocok:** hosting serverless (Vercel, Netlify Functions, dsb.). File system-nya read-only atau sementara, jadi pesanan dan menu bisa hilang kapan saja. Server tidak lagi crash di sana, tetapi data tidak permanen dan akan ada peringatan di log.
+
+## Tidak bisa masuk admin / "sesi habis" terus
+
+- Di hosting serverless server berjalan di beberapa instance dan disknya sementara. Pakai mode **Environment Variables**: isi `ADMIN_USER` dan `ADMIN_PASSWORD` (dan sebaiknya `SESSION_SECRET` acak yang panjang) di dashboard hosting, lalu deploy ulang. Dengan begitu semua instance memakai akun dan kunci sesi yang sama.
+- Jangan memakai form "Buat akun admin" (kode setup) di hosting seperti itu: akun yang dibuat hanya hidup di satu instance dan hilang saat restart.
+- Setelah mengubah variabel, hapus data situs lama di browser (atau buka jendela penyamaran) lalu masuk lagi.
